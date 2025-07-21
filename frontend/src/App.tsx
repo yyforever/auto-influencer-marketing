@@ -134,6 +134,10 @@ export default function App() {
           id: Date.now().toString(),
         },
       ];
+      console.log("handleSubmit-newMessages", newMessages);
+      console.log("handleSubmit-initial_search_query_count", initial_search_query_count);
+      console.log("handleSubmit-max_research_loops", max_research_loops);
+      console.log("handleSubmit-reasoning_model", model);
       thread.submit({
         messages: newMessages,
         initial_search_query_count: initial_search_query_count,
