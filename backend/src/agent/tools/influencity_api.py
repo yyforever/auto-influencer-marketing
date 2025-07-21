@@ -4,7 +4,8 @@ Influencity API integration tools.
 
 import logging
 from typing import Dict, List, Any, Optional
-from langchain_core.tools import tool
+from langchain_core.tools import StructuredTool
+from agent.schemas import CampaignBasicInfo
 
 logger = logging.getLogger(__name__)
 
@@ -14,27 +15,38 @@ class InfluencityAPI:
     
     def __init__(self, api_key: str):
         self.api_key = api_key
+        self.predict_roi = StructuredTool.from_function(
+            func=self._predict_roi,
+            name="predict_roi",
+            description="""
+                Predict ROI for campaign using Influencity prediction models.
+                
+                Args:
+                    data: Campaign basic information
+                    
+                Returns:
+                    ROI predictions and recommendations
+            """,
+            args_schema=CampaignBasicInfo,
+        )
         logger.info("InfluencityAPI initialized")
     
-    @tool
-    def predict_roi(self, objective: str, budget: float, kpi: Dict[str, float]) -> Dict[str, float]:
+    def _predict_roi(self, objective: str, initial_budget: float, kpi: Dict[str, float]) -> Dict[str, float]:
         """
         Predict ROI for campaign using Influencity prediction models.
         
         Args:
-            objective: Campaign objective
-            budget: Available budget
-            kpi: Target KPIs
+            data: Campaign basic information
             
         Returns:
             ROI predictions and recommendations
         """
-        logger.info(f"🔮 Predicting ROI for objective: {objective}, budget: ${budget}")
+        logger.info(f"🔮 Predicting ROI for objective: {objective}, budget: ${initial_budget}")
         
         # Simulate API call
         predicted_roi = {
-            "expected_reach": int(budget * 1000),
-            "expected_engagement": int(budget * 50),
+            "expected_reach": int(initial_budget * 1000),
+            "expected_engagement": int(initial_budget * 50),
             "predicted_roas": 3.5,
             "confidence_score": 0.85
         }
@@ -42,7 +54,7 @@ class InfluencityAPI:
         logger.info(f"📊 ROI Prediction: {predicted_roi}")
         return predicted_roi
     
-    @tool
+    
     def search_influencers_by_topic(self, topic: str, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Search for influencers by topic using Influencity database.
@@ -74,7 +86,7 @@ class InfluencityAPI:
         logger.info(f"✅ Found {len(results)} influencers")
         return results
     
-    @tool
+    
     def search_by_audience(self, audience_criteria: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Search influencers by audience demographics.
@@ -101,7 +113,7 @@ class InfluencityAPI:
         logger.info(f"✅ Found {len(results)} audience matches")
         return results
     
-    @tool
+    
     def lookalike_search(self, reference_influencer: str) -> List[Dict[str, Any]]:
         """
         Find similar influencers using lookalike algorithm.
@@ -128,7 +140,7 @@ class InfluencityAPI:
         logger.info(f"✅ Found {len(results)} similar influencers")
         return results
     
-    @tool
+    
     def fraud_detection(self, influencer_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         Detect fraud indicators for influencers.
@@ -154,7 +166,7 @@ class InfluencityAPI:
         logger.info(f"✅ Fraud detection complete")
         return results
     
-    @tool
+    
     def schedule_cross_platform_post(self, post_data: Dict[str, Any]) -> Dict[str, str]:
         """
         Schedule post across multiple platforms.
@@ -178,7 +190,7 @@ class InfluencityAPI:
         logger.info(f"✅ Post scheduled: {results}")
         return results
     
-    @tool
+    
     def bulk_payment_processing(self, payment_pool: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Process bulk payments to influencers.

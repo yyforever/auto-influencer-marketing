@@ -29,10 +29,12 @@ export default function App() {
     messagesKey: "messages",
     onUpdateEvent: (event: any) => {
       let processedEvent: ProcessedEvent | null = null;
-      if (event.generate_query) {
+      console.log("onUpdateEvent-event", event);
+      if (event.initialize_campaign) {
+        console.log("onUpdateEvent-initialize_campaign", event.initialize_campaign);
         processedEvent = {
-          title: "Generating Search Queries",
-          data: event.generate_query?.search_query?.join(", ") || "",
+          title: "Initializing Campaign",
+          data: event.initialize_campaign?.objective || "",
         };
       } else if (event.web_research) {
         const sources = event.web_research.sources_gathered || [];

@@ -89,7 +89,13 @@ def budget_predictor(state: CampaignState, config: RunnableConfig) -> Dict[str, 
     initial_budget = 10000.0  # Base budget
     
     # Get ROI prediction
-    roi_prediction = api.predict_roi(objective, initial_budget, kpi)
+    roi_prediction = api.predict_roi.invoke(
+        {
+            "objective": objective,
+            "initial_budget": initial_budget,
+            "kpi": kpi
+        }
+    )
     
     # Adjust budget based on prediction
     predicted_budget = initial_budget * roi_prediction.get("predicted_roas", 1.0)

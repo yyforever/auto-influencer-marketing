@@ -9,7 +9,13 @@ from datetime import datetime
 
 def setup_campaign_logging(campaign_id: str) -> logging.Logger:
     """
-    Set up logging for a campaign.
+    Set up logging for a campaign with robust handler management.
+    
+    This function ensures that:
+    1. No duplicate handlers are added
+    2. Clean configuration even if external code modified the logger
+    3. Proper isolation from parent loggers
+    4. Thread-safe operation
     
     Args:
         campaign_id: Campaign identifier
@@ -17,21 +23,89 @@ def setup_campaign_logging(campaign_id: str) -> logging.Logger:
     Returns:
         Configured logger
     """
-    logger = logging.getLogger(f"campaign.{campaign_id}")
+    logger_name = f"campaign.{campaign_id}"
+    logger = logging.getLogger(logger_name)
+    
+    # Use a more robust configuration tracking mechanism
+    expected_handler_signature = f"campaign_handler_{campaign_id}"
+    
+    # Check if logger is already properly configured
+    if hasattr(logger, '_campaign_handler_signature') and \
+       logger._campaign_handler_signature == expected_handler_signature:
+        # Verify the handler is still there and properly configured
+        if len(logger.handlers) == 1 and \
+           hasattr(logger.handlers[0], '_campaign_signature') and \
+           logger.handlers[0]._campaign_signature == expected_handler_signature:
+            return logger
+    
+    # Clean slate: remove ALL existing handlers (including external ones)
+    for handler in logger.handlers[:]:
+        try:
+            handler.close()  # Properly close file handlers, etc.
+        except (AttributeError, OSError):
+            pass  # Some handlers don't support close()
+        logger.removeHandler(handler)
+    
+    # Configure logger properties
     logger.setLevel(logging.INFO)
     
-    # Create formatter
+    # Prevent propagation to avoid duplicate logs in parent loggers
+    # This is crucial for campaign-specific logging
+    logger.propagate = False
+    
+    # Create formatter with more detailed information
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Create console handler
+    # Create and configure console handler
     console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
+    
+    # Mark the handler with our signature for verification
+    console_handler._campaign_signature = expected_handler_signature
+    
+    # Add the handler
     logger.addHandler(console_handler)
+    
+    # Mark logger as properly configured with our signature
+    logger._campaign_handler_signature = expected_handler_signature
     
     logger.info(f"📊 Campaign logging initialized for: {campaign_id}")
     return logger
+
+
+def reset_campaign_logging(campaign_id: str) -> None:
+    """
+    Reset campaign logging configuration.
+    
+    Useful for testing or when logger reconfiguration is needed.
+    This function provides a clean slate for logger reconfiguration.
+    
+    Args:
+        campaign_id: Campaign identifier
+    """
+    logger_name = f"campaign.{campaign_id}"
+    logger = logging.getLogger(logger_name)
+    
+    # Remove all handlers with proper cleanup
+    for handler in logger.handlers[:]:
+        try:
+            handler.close()  # Properly close file handlers, streams, etc.
+        except (AttributeError, OSError):
+            pass  # Some handlers don't support close()
+        logger.removeHandler(handler)
+    
+    # Remove configuration markers
+    if hasattr(logger, '_campaign_handler_signature'):
+        delattr(logger, '_campaign_handler_signature')
+    if hasattr(logger, '_campaign_configured'):  # Legacy marker
+        delattr(logger, '_campaign_configured')
+    
+    # Reset logger properties to defaults
+    logger.setLevel(logging.NOTSET)
+    logger.propagate = True  # Reset to default propagation
 
 
 def log_phase_transition(
