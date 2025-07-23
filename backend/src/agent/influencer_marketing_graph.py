@@ -8,13 +8,18 @@ It orchestrates the 7-phase campaign workflow using LangGraph subgraphs.
 import os
 import logging
 from typing import Dict, Any
+from agent.schemas.campaigns import CampaignBasicInfo
+from agent.utils.message_util import get_user_query
+from devtools import pprint
 from dotenv import load_dotenv
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import state management
 from agent.state import CampaignState
 from agent.configuration import Configuration
+from agent.prompts.instructions import campaign_info_extraction_instructions
 
 # Import all phase subgraphs
 from agent.phases import (
@@ -52,7 +57,22 @@ def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[st
     Returns:
         Updated state with campaign initialization
     """
-    logger.info("🚀 Initializing Influencer Marketing Campaign")
+    logger.info(f"🚀 Initializing Influencer Marketing Campaign, state: {state}")
+    configurable = Configuration.from_runnable_config(config)
+    # Get user query
+    user_query = get_user_query(state["messages"])
+    # init Gemini 2.0 Flash
+    llm = ChatGoogleGenerativeAI(
+        model=configurable.query_generator_model,
+        temperature=0.1,
+        max_retries=2,
+        timeout=60,
+        api_key=os.getenv("GEMINI_API_KEY"),
+    )
+    structured_llm = llm.with_structured_output(CampaignBasicInfo)
+    formatted_prompt = campaign_info_extraction_instructions.format(user_query=user_query)
+    result = structured_llm.invoke(formatted_prompt)
+    pprint(result)
     
     # Generate campaign ID if not provided
     campaign_id = state.get("campaign_id", f"campaign_{int(os.urandom(4).hex(), 16)}")
@@ -65,6 +85,7 @@ def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[st
     
     # Initialize state with defaults
     initial_state = {
+        "user_query": user_query,
         "campaign_id": campaign_id,
         "brand_name": brand_name,
         "phase": 1,
@@ -90,7 +111,8 @@ def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[st
     
     campaign_logger.info(f"✅ Campaign initialized: {campaign_id}")
     campaign_logger.info(f"🏢 Brand: {brand_name}")
-    
+    campaign_logger.info(f"Initial state: {initial_state}")
+    logger.info(f"🚀 Initializing Influencer Marketing Campaign END, state: {state}")
     return initial_state
 
 

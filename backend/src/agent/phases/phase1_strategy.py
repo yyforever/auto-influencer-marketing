@@ -25,7 +25,7 @@ def init_goal(state: CampaignState, config: RunnableConfig) -> Dict[str, Any]:
     Returns:
         Updated state with parsed objective and KPIs
     """
-    logger.info("🎯 Initializing campaign goal")
+    logger.info(f"🎯 Initializing campaign goal, state: {state}")
     
     # Simulate parsing user brief
     user_brief = state.get("user_brief", "Brand awareness campaign for lifestyle brand")
@@ -56,7 +56,7 @@ def init_goal(state: CampaignState, config: RunnableConfig) -> Dict[str, Any]:
     # Add to logs
     logs = state.get("logs", [])
     logs.append("Campaign goal initialized")
-    
+    logger.info(f"🎯 Initializing campaign goal END, state: {state}")
     return {
         "objective": objective,
         "kpi": kpi,
@@ -76,7 +76,7 @@ def budget_predictor(state: CampaignState, config: RunnableConfig) -> Dict[str, 
     Returns:
         Updated state with budget prediction
     """
-    logger.info("💰 Predicting budget requirements")
+    logger.info(f"💰 Predicting budget requirements, state: {state}")
     
     # Get campaign details
     objective = state.get("objective", "")
@@ -107,6 +107,7 @@ def budget_predictor(state: CampaignState, config: RunnableConfig) -> Dict[str, 
     logs = state.get("logs", [])
     logs.append(f"Budget predicted: ${predicted_budget:.2f}")
     
+    logger.info(f"💰 Predicting budget requirements END, state: {state}")
     return {
         "budget": predicted_budget,
         "logs": logs

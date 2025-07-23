@@ -6,19 +6,23 @@ from typing import Dict, List, Literal, Optional, Any
 from typing_extensions import TypedDict, Annotated
 import operator
 
+from langgraph.graph import add_messages
+
 from .models import Creator, Contract, Script, PostLink, Metric, Invoice
 
+
+# class OverallState(TypedDict):
+#     """
+#     Overall state for influencer marketing campaign.
+#     """
+#     messages: Annotated[list, add_messages]
+#     user_query: Annotated[list, operator.add]
 
 class CampaignState(TypedDict, total=False):
     """
     Global state for influencer marketing campaign.
-    
-    Following LangGraph best practices:
-    - Minimal state with only business-critical fields
-    - Immutable updates using dict returns
-    - List fields use operator.add for parallel aggregation
-    - Type-safe with explicit field definitions
     """
+    messages: Annotated[list, add_messages]
     
     # Campaign Definition
     objective: str                              # Campaign goal (brand awareness, sales, etc.)
