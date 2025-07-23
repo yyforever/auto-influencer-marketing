@@ -3,10 +3,11 @@ Campaign state definition for Influencer Marketing Agent.
 """
 
 from typing import Dict, List, Literal, Optional, Any
+from agent.schemas.campaigns import CampaignBasicInfo
 from typing_extensions import TypedDict, Annotated
 import operator
 
-from langgraph.graph import add_messages
+from langgraph.graph import add_messages, MessagesState
 
 from .models import Creator, Contract, Script, PostLink, Metric, Invoice
 
@@ -18,6 +19,14 @@ from .models import Creator, Contract, Script, PostLink, Metric, Invoice
 #     messages: Annotated[list, add_messages]
 #     user_query: Annotated[list, operator.add]
 
+class AgentInputState(MessagesState):
+    """InputState is only 'messages'"""
+    
+class AgentState(MessagesState):
+    """AgentState is 'messages' and 'user_query'"""
+    campaign_basic_info: Optional[CampaignBasicInfo] # 根据用户输入，抽取的营销计划基本信息
+    # campaign_brief: Optional[str] # 根据用户输入，生成营销计划
+    
 class CampaignState(TypedDict, total=False):
     """
     Global state for influencer marketing campaign.

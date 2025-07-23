@@ -38,23 +38,24 @@ class Configuration(BaseModel):
         default=2,
         metadata={"description": "The maximum number of research loops to perform."},
     )
+    
+    allow_skip_human_review_campaign_info: bool = Field(
+        default=False,
+        metadata={"description": "Whether to skip human review of campaign info."},
+    )
 
     @classmethod
     def from_runnable_config(
         cls, config: Optional[RunnableConfig] = None
     ) -> "Configuration":
         """Create a Configuration instance from a RunnableConfig."""
-        configurable = (
-            config["configurable"] if config and "configurable" in config else {}
-        )
-
-        # Get raw values from environment or config
-        raw_values: dict[str, Any] = {
-            name: os.environ.get(name.upper(), configurable.get(name))
-            for name in cls.model_fields.keys()
+        configurable = config.get("configurable", {}) if config else {}
+        field_names = list(cls.model_fields.keys())
+        values: dict[str, Any] = {
+            field_name: os.environ.get(field_name.upper(), configurable.get(field_name))
+            for field_name in field_names
         }
+        return cls(**{k: v for k, v in values.items() if v is not None})
 
-        # Filter out None values
-        values = {k: v for k, v in raw_values.items() if v is not None}
-
-        return cls(**values)
+    class Config:
+        arbitrary_types_allowed = True

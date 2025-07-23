@@ -7,19 +7,21 @@ It orchestrates the 7-phase campaign workflow using LangGraph subgraphs.
 
 import os
 import logging
-from typing import Dict, Any
-from agent.schemas.campaigns import CampaignBasicInfo
+from typing import Any, Dict, Literal
+from agent.schemas import CampaignBasicInfo, CalarifyCampaignInfoWithHuman
 from agent.utils.message_util import get_user_query
 from devtools import pprint
 from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import state management
-from agent.state import CampaignState
+from agent.state import AgentInputState, AgentState, CampaignState
 from agent.configuration import Configuration
-from agent.prompts.instructions import campaign_info_extraction_instructions
+from agent.prompts.instructions import campaign_info_extraction_instructions, clarify_campaign_info_with_human_instructions
 
 # Import all phase subgraphs
 from agent.phases import (
@@ -59,6 +61,8 @@ def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[st
     """
     logger.info(f"🚀 Initializing Influencer Marketing Campaign, state: {state}")
     configurable = Configuration.from_runnable_config(config)
+    if not configurable.allow_clarification:
+        return Command(goto="write_research_brief")
     # Get user query
     user_query = get_user_query(state["messages"])
     # init Gemini 2.0 Flash
@@ -72,7 +76,7 @@ def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[st
     structured_llm = llm.with_structured_output(CampaignBasicInfo)
     formatted_prompt = campaign_info_extraction_instructions.format(user_query=user_query)
     result = structured_llm.invoke(formatted_prompt)
-    pprint(result)
+    logger.debug(f"🔍 Campaign Basic Info Extracted: {result}")
     
     # Generate campaign ID if not provided
     campaign_id = state.get("campaign_id", f"campaign_{int(os.urandom(4).hex(), 16)}")
@@ -176,6 +180,81 @@ def finalize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[str,
         "updated_at": "2024-01-20T18:00:00Z"
     }
 
+def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> AgentState:
+    """
+    Initialize campaign info.
+    """
+    logger.info("🔍 Initializing campaign info")
+    configurable = Configuration.from_runnable_config(config)
+    
+    user_query = get_user_query(state["messages"])
+    # init Gemini 2.0 Flash
+    llm = ChatGoogleGenerativeAI(
+        model=configurable.query_generator_model,
+        temperature=0.1,
+        max_retries=2,
+        timeout=60,
+        api_key=os.getenv("GEMINI_API_KEY"),
+    )
+    structured_llm = llm.with_structured_output(CalarifyCampaignInfoWithHuman)
+    formatted_prompt = campaign_info_extraction_instructions.format(user_query=user_query)
+    campaign_basic_info = structured_llm.invoke(formatted_prompt)
+    logger.debug(f"🔍 Campaign Basic Info Extracted: {campaign_basic_info}")
+    
+    
+    # if not configurable.allow_user_review_campaign_info:
+    #     return Command(goto="generate_campaign_plan")
+    return {
+        "campaign_basic_info": campaign_basic_info
+    }
+
+def review_campaign_info(state: AgentState, config: RunnableConfig) -> Command[Literal["generate_campaign_plan", "__end__"]]:
+    """
+    Review campaign info.
+    """
+    logger.info("🔍 Reviewing campaign info")
+    configurable = Configuration.from_runnable_config(config)
+    
+    campaign_basic_info = state["campaign_basic_info"]
+    logger.debug(f"🔍 Campaign Basic Info Reviewed: {campaign_basic_info}")
+    
+    if configurable.allow_skip_human_review_campaign_info:
+        return Command(goto="generate_campaign_plan")
+    
+    # init Gemini 2.0 Flash
+    llm = ChatGoogleGenerativeAI(
+        model=configurable.query_generator_model,
+        temperature=0.1,
+        max_retries=2,
+        timeout=60,
+        api_key=os.getenv("GEMINI_API_KEY"),
+    )
+    structured_llm = llm.with_structured_output(CalarifyCampaignInfoWithHuman)
+    formatted_prompt = clarify_campaign_info_with_human_instructions.format(
+        messages=get_buffer_string(state["messages"]),
+        campaign_basic_info=campaign_basic_info,
+    )
+    clarify_campaign_info_with_human = structured_llm.invoke(formatted_prompt)
+    logger.debug(f"🔍 Campaign Info Clarified: {clarify_campaign_info_with_human}")
+    if clarify_campaign_info_with_human.need_clarification:
+        return Command(goto=END, update={"messages": [AIMessage(content=clarify_campaign_info_with_human.questions)]})
+    else:
+        # 人工审核
+        logger.debug(f"AI审核信息OK，进行人工审核，确认营销计划基本信息")
+        human_review_result = True
+        if human_review_result:
+            logger.debug(f"人工审核通过，继续下一步")
+            return Command(goto="generate_campaign_plan")
+        else:
+            logger.debug(f"人工审核不通过，返回重新输入")
+            return Command(goto=END, update={"messages": [AIMessage(content="请补充信息xxxx")]})
+
+def generate_campaign_plan(state: AgentState, config: RunnableConfig) -> AgentState:
+    """
+    Generate campaign plan.
+    """
+    logger.info("🔍 Generating campaign plan")
+    return state
 
 def create_influencer_marketing_graph() -> StateGraph:
     """
@@ -186,38 +265,49 @@ def create_influencer_marketing_graph() -> StateGraph:
     """
     logger.info("🏗️ Creating Influencer Marketing Graph")
     
-    # Create main graph
-    builder = StateGraph(CampaignState)
+    # # Create main graph
+    # builder = StateGraph(CampaignState)
     
-    # Add initialization node
-    builder.add_node("initialize_campaign", initialize_campaign)
+    # # Add initialization node
+    # builder.add_node("initialize_campaign", initialize_campaign)
     
-    # Add all phase subgraphs as nodes
-    builder.add_node("phase1_strategy", create_strategy_subgraph())
-    builder.add_node("phase2_discovery", create_discovery_subgraph())
-    builder.add_node("phase3_outreach", create_outreach_subgraph())
-    builder.add_node("phase4_cocreation", create_cocreation_subgraph())
-    builder.add_node("phase5_publish", create_publish_subgraph())
-    builder.add_node("phase6_monitor", create_monitor_subgraph())
-    builder.add_node("phase7_settle", create_settle_subgraph())
+    # # Add all phase subgraphs as nodes
+    # builder.add_node("phase1_strategy", create_strategy_subgraph())
+    # builder.add_node("phase2_discovery", create_discovery_subgraph())
+    # builder.add_node("phase3_outreach", create_outreach_subgraph())
+    # builder.add_node("phase4_cocreation", create_cocreation_subgraph())
+    # builder.add_node("phase5_publish", create_publish_subgraph())
+    # builder.add_node("phase6_monitor", create_monitor_subgraph())
+    # builder.add_node("phase7_settle", create_settle_subgraph())
     
-    # Add finalization node
-    builder.add_node("finalize_campaign", finalize_campaign)
+    # # Add finalization node
+    # builder.add_node("finalize_campaign", finalize_campaign)
     
-    # Define the main workflow edges
-    builder.add_edge(START, "initialize_campaign")
-    builder.add_edge("initialize_campaign", "phase1_strategy")
-    builder.add_edge("phase1_strategy", "phase2_discovery")
-    builder.add_edge("phase2_discovery", "phase3_outreach")
-    builder.add_edge("phase3_outreach", "phase4_cocreation")
-    builder.add_edge("phase4_cocreation", "phase5_publish")
-    builder.add_edge("phase5_publish", "phase6_monitor")
-    builder.add_edge("phase6_monitor", "phase7_settle")
-    builder.add_edge("phase7_settle", "finalize_campaign")
-    builder.add_edge("finalize_campaign", END)
+    # # Define the main workflow edges
+    # builder.add_edge(START, "initialize_campaign")
+    # builder.add_edge("initialize_campaign", "phase1_strategy")
+    # builder.add_edge("phase1_strategy", "phase2_discovery")
+    # builder.add_edge("phase2_discovery", "phase3_outreach")
+    # builder.add_edge("phase3_outreach", "phase4_cocreation")
+    # builder.add_edge("phase4_cocreation", "phase5_publish")
+    # builder.add_edge("phase5_publish", "phase6_monitor")
+    # builder.add_edge("phase6_monitor", "phase7_settle")
+    # builder.add_edge("phase7_settle", "finalize_campaign")
+    # builder.add_edge("finalize_campaign", END)
+    
+    simple_builder = StateGraph(AgentState, input=AgentInputState, config_schema=Configuration)
+    simple_builder.add_node("initialize_campaign_info", initialize_campaign_info)
+    simple_builder.add_node("review_campaign_info", review_campaign_info)
+    simple_builder.add_node("generate_campaign_plan", generate_campaign_plan)
+    
+    simple_builder.add_edge(START, "initialize_campaign_info")
+    simple_builder.add_edge("initialize_campaign_info", "review_campaign_info")
+    simple_builder.add_edge("generate_campaign_plan", END)
     
     # Compile the graph
-    graph = builder.compile(name="influencer-marketing-campaign")
+    # graph = builder.compile(name="influencer-marketing-campaign")
+    
+    graph = simple_builder.compile(name="influencer-marketing-campaign")
     
     logger.info("✅ Influencer Marketing Graph created successfully")
     

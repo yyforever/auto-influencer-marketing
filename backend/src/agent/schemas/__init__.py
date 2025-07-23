@@ -2,6 +2,6 @@
 This package contains the schemas.
 """
 
-from .campaigns import CampaignBasicInfo
+from .campaigns import CampaignBasicInfo, CalarifyCampaignInfoWithHuman
 
-__all__ = ["CampaignBasicInfo"]
+__all__ = ["CampaignBasicInfo", "CalarifyCampaignInfoWithHuman"]

@@ -85,3 +85,10 @@ class CampaignBasicInfo(BaseModel):
         # strict=True,          # 类型必须完全符合；不做隐式转换
         extra='forbid',       # 拒收任何未知字段
     )
+
+class CalarifyCampaignInfoWithHuman(BaseModel):
+    """
+    Calarify campaign info with human.
+    """
+    need_clarification: bool = Field(description="Whether the user needs to be asked some clarifying questions.")
+    questions: Optional[str] = Field(description="The clarifying questions for the user.")

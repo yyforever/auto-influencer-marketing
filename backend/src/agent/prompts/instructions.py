@@ -17,3 +17,37 @@ Format:
 ```
 
 Context: {user_query}"""
+
+clarify_campaign_info_with_human_instructions = """
+These are the messages that have been exchanged so far from the user asking for the campaign:
+<Messages>
+{messages}
+</Messages>
+
+This is the campaign basic info that has been extracted from the user's query for now:
+<Campaign_Basic_Info>
+{campaign_basic_info}
+</Campaign_Basic_Info>
+
+Assess whether you need to ask some clarifying question, or if the user has already provided enough information for you to start to generate a campaign plan.
+IMPORTANT: If you can see in the messages history that you have already asked a clarifying question, you almost always do not need to ask another one. Only ask another question if ABSOLUTELY NECESSARY.
+
+If there are acronyms, abbreviations, or unknown terms, ask the user to clarify.
+If you need to ask a question in a marketing context, follow these guidelines:
+- Be concise while gathering all necessary information
+- Ensure you collect all details required to create or refine the marketing strategy, campaign, or asset in a clear, well-structured manner
+- Use bullet points or numbered lists for clarity (formatted in Markdown so they render correctly)
+- Avoid asking for information that's unnecessary or already provided—verify what the user has shared before requesting anything new
+
+Respond in valid JSON format with these exact keys:
+"need_clarification": boolean,
+"questions": "<questions to ask the user to clarify the campaign scope>", # 可以有多个问题
+
+If you need to ask a clarifying question, return:
+"need_clarification": true,
+"questions": "<your clarifying questions>"
+
+If you do not need to ask a clarifying question, return:
+"need_clarification": false,
+"questions": ""
+"""
