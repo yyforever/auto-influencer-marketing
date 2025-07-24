@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import state management
@@ -241,7 +241,14 @@ def review_campaign_info(state: AgentState, config: RunnableConfig) -> Command[L
     else:
         # 人工审核
         logger.debug(f"AI审核信息OK，进行人工审核，确认营销计划基本信息")
-        human_review_result = True
+        # 这里应该使用interrupt来实现人工审核，获得human_review_result
+        human_review_result = interrupt(
+            {
+                "human_review_request": "请确认campaign_basic_info是否正确，如果正确，请回复'yes'，否则请回复'no'。",
+                "campaign_basic_info": campaign_basic_info,
+            }
+        )
+        # human_review_result = True
         if human_review_result:
             logger.debug(f"人工审核通过，继续下一步")
             return Command(goto="generate_campaign_plan")
