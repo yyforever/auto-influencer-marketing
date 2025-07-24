@@ -8,31 +8,20 @@ It orchestrates the 7-phase campaign workflow using LangGraph subgraphs.
 import os
 import logging
 from typing import Any, Dict, Literal
-from agent.schemas import CampaignBasicInfo, CalarifyCampaignInfoWithHuman
-from agent.utils.message_util import get_user_query
+from agent.schemas.campaigns import CampaignBasicInfo, CalarifyCampaignInfoWithHuman
 from devtools import pprint
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import state management
-from agent.state import AgentInputState, AgentState, CampaignState
+from agent.state.states import AgentInputState, AgentState, CampaignState
 from agent.configuration import Configuration
 from agent.prompts.instructions import campaign_info_extraction_instructions, clarify_campaign_info_with_human_instructions
-
-# Import all phase subgraphs
-from agent.phases import (
-    create_strategy_subgraph,
-    create_discovery_subgraph,
-    create_outreach_subgraph,
-    create_cocreation_subgraph,
-    create_publish_subgraph,
-    create_monitor_subgraph,
-    create_settle_subgraph
-)
 
 # Import utilities
 from agent.utils import setup_campaign_logging, log_phase_transition
@@ -47,148 +36,21 @@ if os.getenv("GEMINI_API_KEY") is None:
 # Setup logging
 logger = logging.getLogger(__name__)
 
-
-def initialize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Initialize a new influencer marketing campaign.
-    
-    Args:
-        state: Initial campaign state
-        config: Runnable configuration
-        
-    Returns:
-        Updated state with campaign initialization
-    """
-    logger.info(f"🚀 Initializing Influencer Marketing Campaign, state: {state}")
-    configurable = Configuration.from_runnable_config(config)
-    if not configurable.allow_clarification:
-        return Command(goto="write_research_brief")
-    # Get user query
-    user_query = get_user_query(state["messages"])
-    # init Gemini 2.0 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
-        temperature=0.1,
-        max_retries=2,
-        timeout=60,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
-    structured_llm = llm.with_structured_output(CampaignBasicInfo)
-    formatted_prompt = campaign_info_extraction_instructions.format(user_query=user_query)
-    result = structured_llm.invoke(formatted_prompt)
-    logger.debug(f"🔍 Campaign Basic Info Extracted: {result}")
-    
-    # Generate campaign ID if not provided
-    campaign_id = state.get("campaign_id", f"campaign_{int(os.urandom(4).hex(), 16)}")
-    
-    # Initialize campaign metadata
-    brand_name = state.get("brand_name", "Demo Brand")
-    
-    # Setup campaign logging
-    campaign_logger = setup_campaign_logging(campaign_id)
-    
-    # Initialize state with defaults
-    initial_state = {
-        "user_query": user_query,
-        "campaign_id": campaign_id,
-        "brand_name": brand_name,
-        "phase": 1,
-        "iteration_count": {},
-        "logs": [f"Campaign initialized: {campaign_id}"],
-        "created_at": "2024-01-15T10:00:00Z",
-        "updated_at": "2024-01-15T10:00:00Z"
-    }
-    
-    # Add any missing required fields
-    if not state.get("candidates"):
-        initial_state["candidates"] = []
-    if not state.get("contracts"):
-        initial_state["contracts"] = []
-    if not state.get("scripts"):
-        initial_state["scripts"] = []
-    if not state.get("posts"):
-        initial_state["posts"] = []
-    if not state.get("settlements"):
-        initial_state["settlements"] = []
-    if not state.get("approvals"):
-        initial_state["approvals"] = {}
-    
-    campaign_logger.info(f"✅ Campaign initialized: {campaign_id}")
-    campaign_logger.info(f"🏢 Brand: {brand_name}")
-    campaign_logger.info(f"Initial state: {initial_state}")
-    logger.info(f"🚀 Initializing Influencer Marketing Campaign END, state: {state}")
-    return initial_state
-
-
-def phase_router(state: CampaignState, config: RunnableConfig) -> str:
-    """
-    Route to the appropriate phase based on current state.
-    
-    Args:
-        state: Current campaign state
-        config: Runnable configuration
-        
-    Returns:
-        Next phase name
-    """
-    current_phase = state.get("phase", 1)
-    
-    phase_map = {
-        1: "phase1_strategy",
-        2: "phase2_discovery", 
-        3: "phase3_outreach",
-        4: "phase4_cocreation",
-        5: "phase5_publish",
-        6: "phase6_monitor",
-        7: "phase7_settle"
-    }
-    
-    next_phase = phase_map.get(current_phase, "phase1_strategy")
-    
-    logger.info(f"🔀 Routing to {next_phase} (phase {current_phase})")
-    
-    return next_phase
-
-
-def finalize_campaign(state: CampaignState, config: RunnableConfig) -> Dict[str, Any]:
-    """
-    Finalize the campaign and generate summary.
-    
-    Args:
-        state: Current campaign state
-        config: Runnable configuration
-        
-    Returns:
-        Final campaign state
-    """
-    logger.info("🏁 Finalizing Influencer Marketing Campaign")
-    
-    # Get campaign summary
-    from agent.utils.logging import create_campaign_summary
-    campaign_summary = create_campaign_summary(state)
-    
-    # Update final state
-    final_logs = state.get("logs", [])
-    final_logs.append("Campaign completed successfully")
-    
-    logger.info(f"✅ Campaign completed: {state.get('campaign_id')}")
-    logger.info(f"📊 Final metrics: {campaign_summary['metrics']}")
-    
-    return {
-        "logs": final_logs,
-        "campaign_summary": campaign_summary,
-        "updated_at": "2024-01-20T18:00:00Z"
-    }
-
 def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> AgentState:
     """
-    Initialize campaign info.
+    Node 1: Extract structured campaign information from user messages.
+    
+    Purpose: Parse user input and extract core campaign data (objective, budget, KPIs, etc.)
+    Schema: Uses CampaignBasicInfo for structured data extraction
     """
     logger.info("🔍 Initializing campaign info")
+    logger.debug(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
-    user_query = get_user_query(state["messages"])
-    # init Gemini 2.0 Flash
+    # Get user messages for extraction
+    user_messages = get_buffer_string(state["messages"])
+    
+    # Initialize LLM with structured output for information extraction
     llm = ChatGoogleGenerativeAI(
         model=configurable.query_generator_model,
         temperature=0.1,
@@ -196,221 +58,174 @@ def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> Agent
         timeout=60,
         api_key=os.getenv("GEMINI_API_KEY"),
     )
-    structured_llm = llm.with_structured_output(CalarifyCampaignInfoWithHuman)
-    formatted_prompt = campaign_info_extraction_instructions.format(user_query=user_query)
+    
+    # Use CampaignBasicInfo for information extraction
+    structured_llm = llm.with_structured_output(CampaignBasicInfo)
+    formatted_prompt = campaign_info_extraction_instructions.format(messages=user_messages)
     campaign_basic_info = structured_llm.invoke(formatted_prompt)
+    
     logger.debug(f"🔍 Campaign Basic Info Extracted: {campaign_basic_info}")
     
-    
-    # if not configurable.allow_user_review_campaign_info:
-    #     return Command(goto="generate_campaign_plan")
     return {
         "campaign_basic_info": campaign_basic_info
     }
 
-def review_campaign_info(state: AgentState, config: RunnableConfig) -> Command[Literal["generate_campaign_plan", "__end__"]]:
+def auto_clarify_campaign_info(state: AgentState, config: RunnableConfig) -> Command[Literal["request_human_review", "__end__"]]:
     """
-    Review campaign info.
+    Node 2: AI determines if extracted info needs clarification from user.
+    
+    Purpose: Analyze campaign_basic_info and decide if more details needed
+    Schema: Uses CalarifyCampaignInfoWithHuman for clarification logic
+    Key Logic: If need_clarification=True, return questions to user and end flow 
     """
-    logger.info("🔍 Reviewing campaign info")
+    logger.info("🔍 Auto clarifying campaign info")
+    logger.debug(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
-    campaign_basic_info = state["campaign_basic_info"]
-    logger.debug(f"🔍 Campaign Basic Info Reviewed: {campaign_basic_info}")
+    # Idempotency check: Skip if already determined clarification status
+    if state.get("need_clarification") is not None:
+        return Command(goto="request_human_review")
     
-    if configurable.allow_skip_human_review_campaign_info:
-        return Command(goto="generate_campaign_plan")
-    
-    # init Gemini 2.0 Flash
+    # Initialize LLM for clarification assessment
     llm = ChatGoogleGenerativeAI(
         model=configurable.query_generator_model,
-        temperature=0.1,
-        max_retries=2,
-        timeout=60,
         api_key=os.getenv("GEMINI_API_KEY"),
     )
+    
+    # Use CalarifyCampaignInfoWithHuman for clarification judgment
     structured_llm = llm.with_structured_output(CalarifyCampaignInfoWithHuman)
     formatted_prompt = clarify_campaign_info_with_human_instructions.format(
         messages=get_buffer_string(state["messages"]),
-        campaign_basic_info=campaign_basic_info,
+        campaign_basic_info=state["campaign_basic_info"],
     )
     clarify_campaign_info_with_human = structured_llm.invoke(formatted_prompt)
-    logger.debug(f"🔍 Campaign Info Clarified: {clarify_campaign_info_with_human}")
+    
+    # Critical Decision: Does AI think clarification is needed?
     if clarify_campaign_info_with_human.need_clarification:
-        return Command(goto=END, update={"messages": [AIMessage(content=clarify_campaign_info_with_human.questions)]})
-    else:
-        # 人工审核
-        logger.debug(f"AI审核信息OK，进行人工审核，确认营销计划基本信息")
-        # 这里应该使用interrupt来实现人工审核，获得human_review_result
-        human_review_result = interrupt(
-            {
-                "human_review_request": "请确认campaign_basic_info是否正确，如果正确，请回复'yes'，否则请回复'no'。",
-                "campaign_basic_info": campaign_basic_info,
+        # End flow with clarification questions for user
+        return Command(
+            goto="__end__",
+            update={
+                "messages": [AIMessage(content=clarify_campaign_info_with_human.questions)],
+                "need_clarification": True
             }
         )
-        # human_review_result = True
-        if human_review_result:
-            logger.debug(f"人工审核通过，继续下一步")
-            return Command(goto="generate_campaign_plan")
-        else:
-            logger.debug(f"人工审核不通过，返回重新输入")
-            return Command(goto=END, update={"messages": [AIMessage(content="请补充信息xxxx")]})
+    
+    # No clarification needed, proceed to human review
+    return Command(
+        goto="request_human_review",
+        update={"need_clarification": False}
+    )
+
+
+def request_human_review(state: AgentState, config: RunnableConfig) -> None:
+    """
+    Node 3: Trigger human review interrupt (HITL core node).
+    
+    Purpose: Pause execution and request human approval for campaign info
+    Key Logic: interrupt() call MUST be last line - execution stops here
+    Resume: Graph will restart from apply_human_review_result node
+    """
+    logger.info("🔍 Requesting human review")
+    logger.debug(f"config: {config}")
+    configurable = Configuration.from_runnable_config(config)
+    
+    # Idempotency check: Skip interrupt if already have human result
+    if state.get("human_review_compagin_info_result") is not None:
+        return  # Already reviewed, will resume to next node
+    
+    # Configuration bypass: Skip review if configured to do so
+    if configurable.allow_skip_human_review_campaign_info:
+        return  # Skip review, next node will handle this case
+    
+    # CRITICAL: interrupt() pauses execution, waits for human input
+    # No code should follow this line - execution stops here
+    interrupt({
+        "type": "human_review_request",
+        "message": "请审核营销活动基本信息。回复 'yes' 批准或 'no' 拒绝。",
+        "campaign_basic_info": state["campaign_basic_info"]
+    })
+
+
+def apply_human_review_result(state: AgentState, config: RunnableConfig) -> Command[Literal["generate_campaign_plan", "__end__"]]:
+    """
+    Node 4: Process human review decision and route to next step.
+    
+    Purpose: Handle resume after interrupt, normalize response, make routing decision
+    Key Logic: "yes" -> continue to plan generation, "no" -> end with feedback
+    Resume Point: This runs when human provides input via Command(resume=...)
+    """
+    logger.info("🔍 Applying human review result")
+    logger.debug(f"config: {config}")
+    configurable = Configuration.from_runnable_config(config)
+    
+    # Configuration bypass: Auto-approve if skip is enabled
+    if configurable.allow_skip_human_review_campaign_info:
+        return Command(
+            goto="generate_campaign_plan",
+            update={"human_review_compagin_info_result": "yes"}
+        )
+    
+    # Get human review result from resume payload
+    human_review_result = state.get("human_review_compagin_info_result")
+    
+    # Safety check: Handle missing review result
+    if human_review_result is None:
+        return Command(
+            goto="__end__", 
+            update={"messages": [AIMessage(content="审核超时或无效输入")]}
+        )
+    
+    # Critical routing decision based on human approval
+    if human_review_result:
+        # Approved: Continue to campaign plan generation
+        return Command(goto="generate_campaign_plan")
+    else:
+        # Rejected: End flow with feedback message
+        return Command(
+            goto="__end__",
+            update={"messages": [AIMessage(content="审核未通过，请补充或修改信息后重新提交")]}
+        )
 
 def generate_campaign_plan(state: AgentState, config: RunnableConfig) -> AgentState:
     """
-    Generate campaign plan.
+    Node 5: Generate final campaign plan based on approved information.
+    
+    Purpose: Create actionable campaign plan from validated campaign_basic_info
+    Key Logic: Transform approved info into executable campaign strategy
+    Final Step: Returns final state, leads to END
     """
-    logger.info("🔍 Generating campaign plan")
+    logger.info("🔍 Generating campaign plan based on approved info")
+    logger.debug(f"config: {config}")
+    
+    # TODO: Implement actual campaign plan generation logic
+    # For now, return current state (approved info is preserved)
     return state
 
 def create_influencer_marketing_graph() -> StateGraph:
-    """
-    Create the main influencer marketing campaign graph.
+    """Create graph with 3-node HITL pattern following LangGraph best practices."""
+    builder = StateGraph(AgentState, input=AgentInputState, config_schema=Configuration)
     
-    Returns:
-        Compiled main campaign graph
-    """
-    logger.info("🏗️ Creating Influencer Marketing Graph")
+    # Add nodes following single-responsibility principle
+    builder.add_node("initialize_campaign_info", initialize_campaign_info)
+    builder.add_node("auto_clarify_campaign_info", auto_clarify_campaign_info)
+    builder.add_node("request_human_review", request_human_review)
+    builder.add_node("apply_human_review_result", apply_human_review_result)
+    builder.add_node("generate_campaign_plan", generate_campaign_plan)
     
-    # # Create main graph
-    # builder = StateGraph(CampaignState)
+    # Define flow: START -> init -> clarify -> review -> apply -> plan -> END
+    builder.add_edge(START, "initialize_campaign_info")
+    builder.add_edge("initialize_campaign_info", "auto_clarify_campaign_info")
+    builder.add_edge("request_human_review", "apply_human_review_result")
+    builder.add_edge("generate_campaign_plan", END)
     
-    # # Add initialization node
-    # builder.add_node("initialize_campaign", initialize_campaign)
+    # Checkpointer required for interrupts
+    checkpointer = MemorySaver()
+    graph = builder.compile(checkpointer=checkpointer)
     
-    # # Add all phase subgraphs as nodes
-    # builder.add_node("phase1_strategy", create_strategy_subgraph())
-    # builder.add_node("phase2_discovery", create_discovery_subgraph())
-    # builder.add_node("phase3_outreach", create_outreach_subgraph())
-    # builder.add_node("phase4_cocreation", create_cocreation_subgraph())
-    # builder.add_node("phase5_publish", create_publish_subgraph())
-    # builder.add_node("phase6_monitor", create_monitor_subgraph())
-    # builder.add_node("phase7_settle", create_settle_subgraph())
-    
-    # # Add finalization node
-    # builder.add_node("finalize_campaign", finalize_campaign)
-    
-    # # Define the main workflow edges
-    # builder.add_edge(START, "initialize_campaign")
-    # builder.add_edge("initialize_campaign", "phase1_strategy")
-    # builder.add_edge("phase1_strategy", "phase2_discovery")
-    # builder.add_edge("phase2_discovery", "phase3_outreach")
-    # builder.add_edge("phase3_outreach", "phase4_cocreation")
-    # builder.add_edge("phase4_cocreation", "phase5_publish")
-    # builder.add_edge("phase5_publish", "phase6_monitor")
-    # builder.add_edge("phase6_monitor", "phase7_settle")
-    # builder.add_edge("phase7_settle", "finalize_campaign")
-    # builder.add_edge("finalize_campaign", END)
-    
-    simple_builder = StateGraph(AgentState, input=AgentInputState, config_schema=Configuration)
-    simple_builder.add_node("initialize_campaign_info", initialize_campaign_info)
-    simple_builder.add_node("review_campaign_info", review_campaign_info)
-    simple_builder.add_node("generate_campaign_plan", generate_campaign_plan)
-    
-    simple_builder.add_edge(START, "initialize_campaign_info")
-    simple_builder.add_edge("initialize_campaign_info", "review_campaign_info")
-    simple_builder.add_edge("generate_campaign_plan", END)
-    
-    # Compile the graph
-    # graph = builder.compile(name="influencer-marketing-campaign")
-    
-    graph = simple_builder.compile(name="influencer-marketing-campaign")
-    
-    logger.info("✅ Influencer Marketing Graph created successfully")
-    
+    logger.info("✅ Graph created with 3-node HITL pattern")
     return graph
 
 
 # Create the main graph instance
 graph = create_influencer_marketing_graph()
-
-
-def run_campaign(
-    objective: str,
-    budget: float,
-    target_audience: Dict[str, Any],
-    brand_name: str = "Demo Brand",
-    **kwargs
-) -> Dict[str, Any]:
-    """
-    Run a complete influencer marketing campaign.
-    
-    Args:
-        objective: Campaign objective
-        budget: Campaign budget
-        target_audience: Target audience definition
-        brand_name: Brand name
-        **kwargs: Additional campaign parameters
-        
-    Returns:
-        Campaign results
-    """
-    logger.info(f"🎯 Starting influencer marketing campaign: {objective}")
-    
-    # Create initial state
-    initial_state = CampaignState(
-        objective=objective,
-        budget=budget,
-        target_audience=target_audience,
-        brand_name=brand_name,
-        **kwargs
-    )
-    
-    # Run the campaign
-    result = graph.invoke(initial_state)
-    
-    logger.info("🎉 Campaign completed successfully")
-    
-    return result
-
-
-# Export toolified agents for external use
-def create_toolified_agents():
-    """
-    Create toolified versions of all phase agents.
-    
-    Returns:
-        Dictionary of toolified agents
-    """
-    from agent.phases.phase1_strategy import create_strategy_tool
-    from agent.phases.phase2_discovery import create_discovery_tool
-    from agent.phases.phase3_outreach import create_outreach_tool
-    from agent.phases.phase4_cocreation import create_cocreation_tool
-    from agent.phases.phase5_publish import create_publish_tool
-    from agent.phases.phase6_monitor import create_monitor_tool
-    from agent.phases.phase7_settle import create_settle_tool
-    
-    return {
-        "strategy_tool": create_strategy_tool(),
-        "discovery_tool": create_discovery_tool(),
-        "outreach_tool": create_outreach_tool(),
-        "cocreation_tool": create_cocreation_tool(),
-        "publish_tool": create_publish_tool(),
-        "monitor_tool": create_monitor_tool(),
-        "settle_tool": create_settle_tool()
-    }
-
-
-# Example usage
-if __name__ == "__main__":
-    # Demo campaign parameters
-    demo_objective = "Brand awareness campaign for sustainable lifestyle products"
-    demo_budget = 15000.0
-    demo_target_audience = {
-        "age_range": "25-40",
-        "gender": "mixed",
-        "interests": ["sustainability", "lifestyle", "wellness"],
-        "location": "US, CA, UK"
-    }
-    
-    # Run demo campaign
-    logger.info("🚀 Running demo campaign")
-    result = run_campaign(
-        objective=demo_objective,
-        budget=demo_budget,
-        target_audience=demo_target_audience,
-        brand_name="EcoLife"
-    )
-    
-    logger.info("🎉 Demo campaign completed")
-    logger.info(f"📊 Results: {result.get('campaign_summary', {})}")

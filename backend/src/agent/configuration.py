@@ -39,9 +39,10 @@ class Configuration(BaseModel):
         metadata={"description": "The maximum number of research loops to perform."},
     )
     
+    # HITL Configuration
     allow_skip_human_review_campaign_info: bool = Field(
         default=False,
-        metadata={"description": "Whether to skip human review of campaign info."},
+        metadata={"description": "Skip human review for campaign info."},
     )
 
     @classmethod

@@ -16,7 +16,10 @@ Format:
 
 ```
 
-Context: {user_query}"""
+Context: 
+<Messages>
+{messages}
+</Messages>"""
 
 clarify_campaign_info_with_human_instructions = """
 These are the messages that have been exchanged so far from the user asking for the campaign:

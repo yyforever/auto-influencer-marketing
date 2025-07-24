@@ -23,9 +23,10 @@ class AgentInputState(MessagesState):
     """InputState is only 'messages'"""
     
 class AgentState(MessagesState):
-    """AgentState is 'messages' and 'user_query'"""
-    campaign_basic_info: Optional[CampaignBasicInfo] # 根据用户输入，抽取的营销计划基本信息
-    # campaign_brief: Optional[str] # 根据用户输入，生成营销计划
+    """Simple campaign state following LangGraph single-responsibility principle."""
+    campaign_basic_info: Optional[CampaignBasicInfo] = None
+    need_clarification: Optional[bool] = None
+    human_review_compagin_info_result: Optional[bool] = None  # True, False, None
     
 class CampaignState(TypedDict, total=False):
     """
