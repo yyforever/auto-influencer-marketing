@@ -15,7 +15,6 @@ from langchain_core.messages import AIMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
-from langgraph.checkpoint.memory import MemorySaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Import state management
@@ -219,9 +218,8 @@ def create_influencer_marketing_graph() -> StateGraph:
     builder.add_edge("request_human_review", "apply_human_review_result")
     builder.add_edge("generate_campaign_plan", END)
     
-    # Checkpointer required for interrupts
-    checkpointer = MemorySaver()
-    graph = builder.compile(checkpointer=checkpointer)
+    # LangGraph API automatically provides checkpointer for interrupts
+    graph = builder.compile()
     
     logger.info("✅ Graph created with 3-node HITL pattern")
     return graph
