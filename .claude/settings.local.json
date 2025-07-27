@@ -12,7 +12,9 @@
       "Bash(PYTHONPATH=/Users/yangyang/Github/auto-influencer-marketing/backend/src python -c \"\nfrom agent.phases.phase1_strategy import create_strategy_subgraph\nfrom agent.phases.phase2_discovery import create_discovery_subgraph  \nfrom agent.phases.phase3_outreach import create_outreach_subgraph\nfrom agent.phases.phase4_cocreation import create_cocreation_subgraph\nfrom agent.phases.phase5_publish import create_publish_subgraph\nfrom agent.phases.phase6_monitor import create_monitor_subgraph\nfrom agent.phases.phase7_settle import create_settle_subgraph\nprint(''✅ All 7 phase subgraphs imported successfully'')\n\")",
       "Bash(PYTHONPATH=/Users/yangyang/Github/auto-influencer-marketing/backend/src python -c \"\nfrom agent.phases.phase1_strategy import create_strategy_subgraph\nfrom agent.phases.phase2_discovery import create_discovery_subgraph  \nfrom agent.phases.phase3_outreach import create_outreach_subgraph\nfrom agent.phases.phase4_cocreation import create_cocreation_subgraph\nfrom agent.phases.phase5_publish import create_publish_subgraph\nfrom agent.phases.phase6_monitor import create_monitor_subgraph\nfrom agent.phases.phase7_settle import create_settle_subgraph\nprint(''✅ All 7 phase subgraphs imported successfully'')\n\")",
       "Bash(PYTHONPATH=/Users/yangyang/Github/auto-influencer-marketing/backend/src python -c \"\nfrom agent.phases.phase1_strategy import create_strategy_subgraph\nfrom agent.phases.phase2_discovery import create_discovery_subgraph  \nfrom agent.phases.phase3_outreach import create_outreach_subgraph\nfrom agent.phases.phase4_cocreation import create_cocreation_subgraph\nfrom agent.phases.phase5_publish import create_publish_subgraph\nfrom agent.phases.phase6_monitor import create_monitor_subgraph\nfrom agent.phases.phase7_settle import create_settle_subgraph\nprint(''✅ All 7 phase subgraphs imported successfully'')\n\")",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(LOG_LEVEL=INFO python test_logging_config.py)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

@@ -20,7 +20,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # Import state management
 from agent.state.states import AgentInputState, AgentState, CampaignState
 from agent.configuration import Configuration
-from agent.prompts.instructions import campaign_info_extraction_instructions, clarify_campaign_info_with_human_instructions
+from agent.prompts.instructions import campaign_info_extraction_instructions, clarify_campaign_info_with_human_instructions, caliry_questions_template
 
 # Import utilities
 from agent.utils import setup_campaign_logging, log_phase_transition
@@ -43,7 +43,7 @@ def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> Agent
     Schema: Uses CampaignBasicInfo for structured data extraction
     """
     logger.info("🔍 Initializing campaign info")
-    logger.debug(f"config: {config}")
+    logger.info(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
     # Get user messages for extraction
@@ -63,7 +63,7 @@ def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> Agent
     formatted_prompt = campaign_info_extraction_instructions.format(messages=user_messages)
     campaign_basic_info = structured_llm.invoke(formatted_prompt)
     
-    logger.debug(f"🔍 Campaign Basic Info Extracted: {campaign_basic_info}")
+    logger.info(f"🔍 Campaign Basic Info Extracted: {campaign_basic_info}")
     
     return {
         "campaign_basic_info": campaign_basic_info
@@ -78,12 +78,12 @@ def auto_clarify_campaign_info(state: AgentState, config: RunnableConfig) -> Com
     Key Logic: If need_clarification=True, return questions to user and end flow 
     """
     logger.info("🔍 Auto clarifying campaign info")
-    logger.debug(f"config: {config}")
+    # logger.info(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
     # Idempotency check: Skip if already determined clarification status
-    if state.get("need_clarification") is not None:
-        return Command(goto="request_human_review")
+    # if state.get("need_clarification") is not None:
+    #     return Command(goto="request_human_review")
     
     # Initialize LLM for clarification assessment
     llm = ChatGoogleGenerativeAI(
@@ -98,23 +98,27 @@ def auto_clarify_campaign_info(state: AgentState, config: RunnableConfig) -> Com
         campaign_basic_info=state["campaign_basic_info"],
     )
     clarify_campaign_info_with_human = structured_llm.invoke(formatted_prompt)
-    
+    logger.info(f"🔍 auto_clarify_campaign_info - clarify_campaign_info_with_human response: {clarify_campaign_info_with_human}")
     # Critical Decision: Does AI think clarification is needed?
     if clarify_campaign_info_with_human.need_clarification:
         # End flow with clarification questions for user
+        logger.info(f"🔍 auto_clarify_campaign_info - Need clarification: {clarify_campaign_info_with_human.questions}")
         return Command(
             goto="__end__",
             update={
-                "messages": [AIMessage(content=clarify_campaign_info_with_human.questions)],
+                "messages": [AIMessage(content=caliry_questions_template.format(
+                    questions=clarify_campaign_info_with_human.questions,
+                    campaign_basic_info=state["campaign_basic_info"])),
+                ],
                 "need_clarification": True
             }
         )
-    
-    # No clarification needed, proceed to human review
-    return Command(
-        goto="request_human_review",
-        update={"need_clarification": False}
-    )
+    else:
+        logger.info(f"🔍 auto_clarify_campaign_info - No clarification needed")
+        return Command(
+            goto="request_human_review",
+            update={"need_clarification": False}
+        )
 
 
 def request_human_review(state: AgentState, config: RunnableConfig) -> None:
@@ -126,23 +130,27 @@ def request_human_review(state: AgentState, config: RunnableConfig) -> None:
     Resume: Graph will restart from apply_human_review_result node
     """
     logger.info("🔍 Requesting human review")
-    logger.debug(f"config: {config}")
+    # logger.info(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
     # Idempotency check: Skip interrupt if already have human result
     if state.get("human_review_compagin_info_result") is not None:
+        logger.info(f"🔍 request_human_review - Already reviewed, human_review_compagin_info_result is not None")
         return  # Already reviewed, will resume to next node
     
     # Configuration bypass: Skip review if configured to do so
     if configurable.allow_skip_human_review_campaign_info:
+        logger.info(f"🔍 request_human_review - Skip review, allow_skip_human_review_campaign_info is True")
         return  # Skip review, next node will handle this case
     
     # CRITICAL: interrupt() pauses execution, waits for human input
     # No code should follow this line - execution stops here
     interrupt({
         "type": "human_review_request",
-        "message": "请审核营销活动基本信息。回复 'yes' 批准或 'no' 拒绝。",
-        "campaign_basic_info": state["campaign_basic_info"]
+        "title": "请审核营销活动基本信息",
+        # "message": "请审核营销活动基本信息。回复 'yes' 批准或 'no' 拒绝。",
+        "content": "请审核营销活动基本信息。回复 'yes' 批准或 'no' 拒绝。\n 当前的营销活动基本信息如下：\n {campaign_basic_info}",
+        # "campaign_basic_info": state["campaign_basic_info"]
     })
 
 
@@ -155,11 +163,12 @@ def apply_human_review_result(state: AgentState, config: RunnableConfig) -> Comm
     Resume Point: This runs when human provides input via Command(resume=...)
     """
     logger.info("🔍 Applying human review result")
-    logger.debug(f"config: {config}")
+    # logger.info(f"config: {config}")
     configurable = Configuration.from_runnable_config(config)
     
     # Configuration bypass: Auto-approve if skip is enabled
     if configurable.allow_skip_human_review_campaign_info:
+        logger.info(f"🔍 apply_human_review_result - Skip review, allow_skip_human_review_campaign_info is True")
         return Command(
             goto="generate_campaign_plan",
             update={"human_review_compagin_info_result": "yes"}
@@ -170,6 +179,7 @@ def apply_human_review_result(state: AgentState, config: RunnableConfig) -> Comm
     
     # Safety check: Handle missing review result
     if human_review_result is None:
+        logger.info(f"🔍 apply_human_review_result - No human review result, will end flow")
         return Command(
             goto="__end__", 
             update={"messages": [AIMessage(content="审核超时或无效输入")]}
@@ -178,9 +188,11 @@ def apply_human_review_result(state: AgentState, config: RunnableConfig) -> Comm
     # Critical routing decision based on human approval
     if human_review_result:
         # Approved: Continue to campaign plan generation
+        logger.info(f"🔍 apply_human_review_result - Human review result is True, will continue to generate campaign plan")
         return Command(goto="generate_campaign_plan")
     else:
         # Rejected: End flow with feedback message
+        logger.info(f"🔍 apply_human_review_result - Human review result is False, will end flow")
         return Command(
             goto="__end__",
             update={"messages": [AIMessage(content="审核未通过，请补充或修改信息后重新提交")]}
@@ -195,7 +207,7 @@ def generate_campaign_plan(state: AgentState, config: RunnableConfig) -> AgentSt
     Final Step: Returns final state, leads to END
     """
     logger.info("🔍 Generating campaign plan based on approved info")
-    logger.debug(f"config: {config}")
+    # logger.info(f"config: {config}")
     
     # TODO: Implement actual campaign plan generation logic
     # For now, return current state (approved info is preserved)

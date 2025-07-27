@@ -3,8 +3,15 @@ Logging utilities for campaign management.
 """
 
 import logging
+import os
 from typing import Dict, Any, List
 from datetime import datetime
+
+
+def _get_log_level() -> int:
+    """Get log level from environment variable with fallback to INFO."""
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    return getattr(logging, log_level_str, logging.INFO)
 
 
 def setup_campaign_logging(campaign_id: str) -> logging.Logger:
@@ -47,7 +54,8 @@ def setup_campaign_logging(campaign_id: str) -> logging.Logger:
         logger.removeHandler(handler)
     
     # Configure logger properties
-    logger.setLevel(logging.INFO)
+    log_level = _get_log_level()
+    logger.setLevel(log_level)
     
     # Prevent propagation to avoid duplicate logs in parent loggers
     # This is crucial for campaign-specific logging
@@ -60,7 +68,7 @@ def setup_campaign_logging(campaign_id: str) -> logging.Logger:
     
     # Create and configure console handler
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     
     # Mark the handler with our signature for verification

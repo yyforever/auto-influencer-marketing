@@ -16,6 +16,8 @@ export default function App() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const hasFinalizeEventOccurredRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [forceRender, setForceRender] = useState(0);
+  const messageHistoryRef = useRef<Message[]>([]);
   const thread = useStream<{
     messages: Message[];
     initial_search_query_count: number;
@@ -30,7 +32,44 @@ export default function App() {
     onUpdateEvent: (event: any) => {
       let processedEvent: ProcessedEvent | null = null;
       console.log("onUpdateEvent-event", event);
-      if (event.initialize_campaign) {
+      
+      // 影响者营销图事件处理
+      if (event.initialize_campaign_info) {
+        console.log("onUpdateEvent-initialize_campaign_info", event.initialize_campaign_info);
+        processedEvent = {
+          title: "📋 初始化活动信息",
+          data: `提取活动基本信息: ${event.initialize_campaign_info?.objective || "营销目标"}`,
+        };
+      } else if (event.auto_clarify_campaign_info) {
+        console.log("onUpdateEvent-auto_clarify_campaign_info", event.auto_clarify_campaign_info);
+        processedEvent = {
+          title: "🤔 智能信息澄清",
+          data: event.auto_clarify_campaign_info?.need_clarification 
+            ? "需要更多信息补充" 
+            : "信息完整，准备进行下一步",
+        };
+      } else if (event.request_human_review) {
+        console.log("onUpdateEvent-request_human_review", event.request_human_review);
+        processedEvent = {
+          title: "👤 请求人工审核",
+          data: "等待用户审核活动信息",
+        };
+      } else if (event.apply_human_review_result) {
+        console.log("onUpdateEvent-apply_human_review_result", event.apply_human_review_result);
+        processedEvent = {
+          title: "✅ 应用审核结果",
+          data: "处理用户审核反馈",
+        };
+      } else if (event.generate_campaign_plan) {
+        console.log("onUpdateEvent-generate_campaign_plan", event.generate_campaign_plan);
+        processedEvent = {
+          title: "🚀 生成活动计划",
+          data: "基于审核通过的信息生成完整活动计划",
+        };
+        hasFinalizeEventOccurredRef.current = true;
+      }
+      // 兼容原研究助手事件 (向后兼容)
+      else if (event.initialize_campaign) {
         console.log("onUpdateEvent-initialize_campaign", event.initialize_campaign);
         processedEvent = {
           title: "Initializing Campaign",
@@ -61,6 +100,7 @@ export default function App() {
         };
         hasFinalizeEventOccurredRef.current = true;
       }
+      
       if (processedEvent) {
         setProcessedEventsTimeline((prevEvents) => [
           ...prevEvents,
@@ -83,6 +123,76 @@ export default function App() {
       }
     }
   }, [thread.messages]);
+
+  // 消息状态监控和强制同步
+  useEffect(() => {
+    console.log("🔄 Messages updated, total count:", thread.messages.length);
+    console.log("🔄 Loading state:", thread.isLoading);
+    console.log("🔄 Thread state:", {
+      status: thread.status,
+      error: thread.error
+    });
+    
+    // 更新消息历史记录
+    const currentMessages = thread.messages;
+    const previousMessages = messageHistoryRef.current;
+    
+    // 检查消息状态变化
+    if (currentMessages.length !== previousMessages.length) {
+      console.log(`📈 消息数量变化: ${previousMessages.length} → ${currentMessages.length}`);
+      
+      // 如果消息数量增加，检查新增消息
+      if (currentMessages.length > previousMessages.length) {
+        const newMessages = currentMessages.slice(previousMessages.length);
+        console.log("📬 新增消息:", newMessages.map(msg => ({
+          id: msg.id,
+          type: msg.type,
+          contentPreview: typeof msg.content === 'string' 
+            ? msg.content.substring(0, 100) + '...'
+            : msg.content
+        })));
+      }
+    }
+    
+    // 更新历史记录
+    messageHistoryRef.current = [...currentMessages];
+    
+    // 详细消息记录
+    currentMessages.forEach((msg, index) => {
+      console.log(`📨 Message ${index + 1}:`, {
+        id: msg.id,
+        type: msg.type,
+        timestamp: new Date().toISOString(),
+        contentLength: typeof msg.content === 'string' ? msg.content.length : 0,
+        contentPreview: typeof msg.content === 'string' 
+          ? msg.content.substring(0, 200) + (msg.content.length > 200 ? '...' : '')
+          : msg.content
+      });
+    });
+
+    // 检查连续AI消息
+    if (currentMessages.length >= 2) {
+      const lastTwo = currentMessages.slice(-2);
+      if (lastTwo.length === 2 && lastTwo[0].type === 'ai' && lastTwo[1].type === 'ai') {
+        console.log("🔍 发现连续AI消息，内容对比:");
+        console.log("第一条AI ID:", lastTwo[0].id);
+        console.log("第二条AI ID:", lastTwo[1].id);
+        console.log("内容相同:", lastTwo[0].content === lastTwo[1].content);
+        
+        // 强制重新渲染以确保显示
+        setForceRender(prev => prev + 1);
+      }
+    }
+    
+    // 定期状态检查（仅在非加载状态）
+    if (!thread.isLoading && currentMessages.length > 0) {
+      const checkTimer = setTimeout(() => {
+        console.log("⏰ 定期状态检查 - 当前消息数:", thread.messages.length);
+      }, 1000);
+      
+      return () => clearTimeout(checkTimer);
+    }
+  }, [thread.messages, thread.isLoading, thread.status]);
 
   useEffect(() => {
     if (
@@ -157,6 +267,22 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-neutral-800 text-neutral-100 font-sans antialiased">
+      {/* 实时调试信息 */}
+      <div className="fixed top-0 right-0 bg-red-900 text-white p-2 text-xs z-50 opacity-75 max-w-xs">
+        📊 消息数: {thread.messages.length} | 加载中: {thread.isLoading ? '是' : '否'}
+        <br />
+        状态: {thread.status || 'N/A'} | 强制渲染: {forceRender}
+        <br />
+        历史记录: {messageHistoryRef.current.length}
+        <br />
+        <div className="text-xs opacity-75">
+          {thread.messages.slice(-2).map((msg, idx) => (
+            <div key={msg.id} className="truncate">
+              {idx + 1}: {msg.type} - {msg.id?.substring(0, 8)}...
+            </div>
+          ))}
+        </div>
+      </div>
       <main className="h-full w-full max-w-4xl mx-auto">
           {thread.messages.length === 0 ? (
             <WelcomeScreen
@@ -187,6 +313,7 @@ export default function App() {
               onCancel={handleCancel}
               liveActivityEvents={processedEventsTimeline}
               historicalActivities={historicalActivities}
+              forceRender={forceRender}
             />
           )}
       </main>

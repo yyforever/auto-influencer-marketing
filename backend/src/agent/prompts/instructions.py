@@ -1,8 +1,9 @@
 campaign_info_extraction_instructions = """
-你的目标是识别用户指令中的网红营销的要求信息，将其提取出来按照指定的格式输出，来确定用户对本次网红营销Campaign的基本要求。
+你的目标是识别用户Messages中的网红营销的要求信息，将相关信息提取出来按照指定的格式输出，来确定用户对本次网红营销Campaign的基本要求。
 Instructions:
 - 只提取用户输入信息中的营销相关信息，不要添加任何其他信息。
 - 如果用户输入信息中没有提到所需的信息时，禁止推测，直接返回空值。
+- 你需要从多轮输入中提取，当有多个冲突的信息时，你需要根据用户输入的上下文，来确定哪个信息是用户真正想要的。
 
 Format:
 - Format your response as a JSON object with ALL two of these exact keys:
@@ -14,9 +15,6 @@ Format:
    - "target_audience": 用户期望本次营销的目标受众，即希望可以吸引的受众群体，可以有多个
    - "product_pillars": 用户期望本次营销的产品卖点，即希望可以突出展示的产品特点，可以有多个
 
-```
-
-Context: 
 <Messages>
 {messages}
 </Messages>"""
@@ -37,7 +35,8 @@ IMPORTANT: If you can see in the messages history that you have already asked a 
 
 If there are acronyms, abbreviations, or unknown terms, ask the user to clarify.
 If you need to ask a question in a marketing context, follow these guidelines:
-- Be concise while gathering all necessary information
+- Be concise while gathering all necessary information of campaign basic info
+- You must get all the information of campaign basic info, and you must not miss any information
 - Ensure you collect all details required to create or refine the marketing strategy, campaign, or asset in a clear, well-structured manner
 - Use bullet points or numbered lists for clarity (formatted in Markdown so they render correctly)
 - Avoid asking for information that's unnecessary or already provided—verify what the user has shared before requesting anything new
@@ -53,4 +52,14 @@ If you need to ask a clarifying question, return:
 If you do not need to ask a clarifying question, return:
 "need_clarification": false,
 "questions": ""
+"""
+
+caliry_questions_template = """
+当前的 Campaign 基本信息如下：
+<Campaign_Basic_Info>
+{campaign_basic_info}
+</Campaign_Basic_Info>
+
+请您继续补充以下信息：
+{questions}
 """

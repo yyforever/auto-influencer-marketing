@@ -230,6 +230,7 @@ interface ChatMessagesViewProps {
   onCancel: () => void;
   liveActivityEvents: ProcessedEvent[];
   historicalActivities: Record<string, ProcessedEvent[]>;
+  forceRender?: number; // 强制重新渲染计数器
 }
 
 export function ChatMessagesView({
@@ -240,8 +241,12 @@ export function ChatMessagesView({
   onCancel,
   liveActivityEvents,
   historicalActivities,
+  forceRender = 0,
 }: ChatMessagesViewProps) {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  
+  // 调试：记录组件渲染
+  console.log("🎨 ChatMessagesView 渲染 - 消息数:", messages.length, "强制渲染:", forceRender);
 
   const handleCopy = async (text: string, messageId: string) => {
     try {
@@ -259,7 +264,7 @@ export function ChatMessagesView({
           {messages.map((message, index) => {
             const isLast = index === messages.length - 1;
             return (
-              <div key={message.id || `msg-${index}`} className="space-y-3">
+              <div key={`${message.id || `msg-${index}`}-${forceRender}`} className="space-y-3">
                 <div
                   className={`flex items-start gap-3 ${
                     message.type === "human" ? "justify-end" : ""
