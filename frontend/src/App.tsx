@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { ProcessedEvent } from "@/components/ActivityTimeline";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatMessagesView } from "@/components/ChatMessagesView";
+import { HumanReviewDialog } from "@/components/HumanReviewDialog";
 import { Button } from "@/components/ui/button";
 
 export default function App() {
@@ -18,11 +19,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [forceRender, setForceRender] = useState(0);
   const messageHistoryRef = useRef<Message[]>([]);
+  
+  // 🔥 HITL状态管理已迁移到thread.interrupt (SDK管理)
   const thread = useStream<{
     messages: Message[];
     initial_search_query_count: number;
     max_research_loops: number;
     reasoning_model: string;
+  }, {
+    InterruptType: any; // 支持interrupt功能的泛型定义
   }>({
     apiUrl: import.meta.env.DEV
       ? "http://localhost:2024"
@@ -33,6 +38,7 @@ export default function App() {
       let processedEvent: ProcessedEvent | null = null;
       console.log("onUpdateEvent-event", event);
       
+      // 🔥 Interrupt 处理已迁移到thread.interrupt属性检测
       // 影响者营销图事件处理
       if (event.initialize_campaign_info) {
         console.log("onUpdateEvent-initialize_campaign_info", event.initialize_campaign_info);
@@ -52,7 +58,7 @@ export default function App() {
         console.log("onUpdateEvent-request_human_review", event.request_human_review);
         processedEvent = {
           title: "👤 请求人工审核",
-          data: "等待用户审核活动信息",
+          data: "暂停执行，等待人工审核活动信息",
         };
       } else if (event.apply_human_review_result) {
         console.log("onUpdateEvent-apply_human_review_result", event.apply_human_review_result);
@@ -129,8 +135,8 @@ export default function App() {
     console.log("🔄 Messages updated, total count:", thread.messages.length);
     console.log("🔄 Loading state:", thread.isLoading);
     console.log("🔄 Thread state:", {
-      status: thread.status,
-      error: thread.error
+      error: thread.error,
+      isLoading: thread.isLoading
     });
     
     // 更新消息历史记录
@@ -192,7 +198,7 @@ export default function App() {
       
       return () => clearTimeout(checkTimer);
     }
-  }, [thread.messages, thread.isLoading, thread.status]);
+  }, [thread.messages, thread.isLoading, thread.error]);
 
   useEffect(() => {
     if (
@@ -265,13 +271,48 @@ export default function App() {
     window.location.reload();
   }, [thread]);
 
+  // HITL Resume 处理函数 - 使用LangGraph React SDK
+  const handleResume = useCallback(async (decision: boolean) => {
+    if (!thread.interrupt) {
+      console.error("❌ No interrupt to resume");
+      return;
+    }
+
+    console.log(`🔄 Resuming execution with decision: ${decision}`);
+    
+    try {
+      // 🔥 使用LangGraph React SDK的thread.submit方法
+      thread.submit(undefined, { 
+        command: { resume: decision }
+      });
+      
+      console.log(`✅ Resume request sent with decision: ${decision}`);
+      
+    } catch (error) {
+      console.error("❌ Resume error:", error);
+      setError(`恢复执行失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
+  }, [thread]);
+
+  const handleApprove = useCallback(async () => await handleResume(true), [handleResume]);
+  const handleReject = useCallback(async () => await handleResume(false), [handleResume]);
+  
+  const handleInterruptCancel = useCallback(() => {
+    // 🔥 SDK管理interrupt状态，取消操作只需要停止当前执行
+    console.log("🚫 User cancelled interrupt dialog");
+    // 注意：SDK的thread.interrupt由后端状态控制，前端无法直接清除
+    // 如果需要真正取消，应该调用thread.stop()或类似方法
+  }, []);
+
   return (
     <div className="flex h-screen bg-neutral-800 text-neutral-100 font-sans antialiased">
       {/* 实时调试信息 */}
       <div className="fixed top-0 right-0 bg-red-900 text-white p-2 text-xs z-50 opacity-75 max-w-xs">
         📊 消息数: {thread.messages.length} | 加载中: {thread.isLoading ? '是' : '否'}
         <br />
-        状态: {thread.status || 'N/A'} | 强制渲染: {forceRender}
+        错误: {thread.error ? '有' : '无'} | 强制渲染: {forceRender}
+        <br />
+        🚫 中断中: {thread.interrupt ? '是' : '否'} | SDK处理中: {thread.isLoading ? '是' : '否'}
         <br />
         历史记录: {messageHistoryRef.current.length}
         <br />
@@ -317,6 +358,16 @@ export default function App() {
             />
           )}
       </main>
+
+      {/* 🔥 Human-in-the-Loop (HITL) 审核对话框 - 使用SDK的thread.interrupt */}
+      <HumanReviewDialog
+        open={!!thread.interrupt}
+        payload={thread.interrupt?.value}
+        onApprove={handleApprove}
+        onReject={handleReject}
+        onCancel={handleInterruptCancel}
+        isLoading={thread.isLoading}
+      />
     </div>
   );
 }
