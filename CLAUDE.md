@@ -30,6 +30,7 @@ This is an **Auto Influencer Marketing Platform** - an AI-powered system that le
 - **Streaming**: Real-time results streaming via LangGraph's streaming capabilities
 - **Error Handling**: Implements retry logic and graceful degradation
 - **Token Optimization**: URL shortening and efficient prompt formatting
+- **You should always search langgraph-llms-full.txt to make sure usage of LangGraph is best practice. It's a very long text.
 
 ### Frontend (`frontend/`)
 - **Technology**: React 19 + TypeScript + Vite + Tailwind CSS + Shadcn UI
