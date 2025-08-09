@@ -72,6 +72,30 @@ class Configuration(BaseModel):
         default=5,
         metadata={"description": "Maximum iterations for researcher supervisor."},
     )
+    
+    # MCP and Tool Configuration
+    mcp_prompt: Optional[str] = Field(
+        default="",
+        metadata={"description": "MCP tool integration prompt for research context."},
+    )
+    search_api: Optional[str] = Field(
+        default="mock",
+        metadata={"description": "Search API to use for research (tavily, google, etc)."},
+    )
+    max_react_tool_calls: int = Field(
+        default=5,
+        metadata={"description": "Maximum tool calls per research session."},
+    )
+    
+    # Compression Configuration  
+    compression_model: Optional[str] = Field(
+        default=None,
+        metadata={"description": "Model for research compression (uses research_model if None)."},
+    )
+    compression_model_max_tokens: Optional[int] = Field(
+        default=None,
+        metadata={"description": "Max tokens for compression model (uses research_model_max_tokens if None)."},
+    )
 
     @classmethod
     def from_runnable_config(

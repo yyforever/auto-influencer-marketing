@@ -113,3 +113,31 @@ class InfluencerResearchComplete(BaseModel):
     """Tool to signal completion of influencer marketing research phase."""
     
     pass  # No parameters needed - completion signal only
+
+
+class ResearchComplete(BaseModel):
+    """Tool to signal completion of individual research task."""
+    
+    pass  # No parameters needed - completion signal only
+
+
+# Researcher State Management for Individual Research Tasks
+# ========================================================
+
+class ResearcherInputState(TypedDict):
+    """Input state for individual researcher agents."""
+    researcher_messages: Annotated[List[BaseMessage], override_reducer]
+    research_topic: str
+
+
+class ResearcherState(TypedDict):
+    """Complete state for individual researcher workflow."""
+    researcher_messages: Annotated[List[BaseMessage], override_reducer]
+    research_topic: str
+    tool_call_iterations: int
+
+
+class ResearcherOutputState(TypedDict):
+    """Output state from researcher with compressed results."""
+    compressed_research: str
+    raw_notes: Annotated[List[str], override_reducer]
