@@ -44,6 +44,34 @@ class Configuration(BaseModel):
         default=False,
         metadata={"description": "Skip human review for campaign info."},
     )
+    
+    # Clarification Configuration
+    allow_clarification: bool = Field(
+        default=False,
+        metadata={"description": "Allow clarification questions to be asked to users when search scope is unclear."},
+    )
+    
+    # Research Configuration
+    research_model: str = Field(
+        default="gemini-2.0-flash",
+        metadata={"description": "The model to use for research brief generation."},
+    )
+    research_model_max_tokens: int = Field(
+        default=4000,
+        metadata={"description": "Maximum tokens for research model output."},
+    )
+    max_structured_output_retries: int = Field(
+        default=3,
+        metadata={"description": "Maximum retries for structured output generation."},
+    )
+    max_concurrent_research_units: int = Field(
+        default=3,
+        metadata={"description": "Maximum number of concurrent research units in supervisor."},
+    )
+    max_researcher_iterations: int = Field(
+        default=5,
+        metadata={"description": "Maximum iterations for researcher supervisor."},
+    )
 
     @classmethod
     def from_runnable_config(

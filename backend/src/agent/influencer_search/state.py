@@ -10,6 +10,7 @@ from typing_extensions import TypedDict, Annotated
 import operator
 
 from langgraph.graph import MessagesState
+from langchain_core.messages import BaseMessage
 
 from .schemas import InfluencerSearchQuery, InfluencerProfile, SearchResult
 
@@ -61,6 +62,19 @@ class InfluencerSearchState(MessagesState):
     
     ranking_criteria: Optional[dict] = None
     """Criteria used for ranking results"""
+    
+    # Research Brief Workflow Fields
+    research_brief: Optional[str] = None
+    """Generated research brief for influencer marketing campaign"""
+    
+    research_metadata: Optional[dict] = None
+    """Structured metadata from research brief generation"""
+    
+    supervisor_messages: Annotated[List[BaseMessage], operator.add] = []
+    """Messages for supervisor conversation (accumulated)"""
+    
+    supervisor_active: bool = False
+    """Flag indicating if research supervisor is active"""
 
 
 class InfluencerSearchWorkingState(TypedDict, total=False):

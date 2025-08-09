@@ -13,7 +13,7 @@ from langgraph.types import Command
 
 # Import local modules
 from agent.influencer_search.state import InfluencerSearchState, InfluencerSearchInputState
-from agent.influencer_search.nodes import parse_search_request, search_influencers, refine_search
+from agent.influencer_search.nodes import clarify_with_user, write_research_brief, research_supervisor, parse_search_request, search_influencers, refine_search
 from agent.configuration import Configuration
 
 # Setup logging
@@ -58,8 +58,9 @@ def create_influencer_search_graph() -> StateGraph:
     Create and compile the influencer search graph.
     
     Graph Flow:
-    START -> parse_search_request -> search_influencers -> [conditional] -> refine_search -> END
-                                                        -> [conditional] -> END
+    START -> clarify_with_user -> write_research_brief -> research_supervisor -> END
+                               -> parse_search_request -> search_influencers -> [conditional] -> refine_search -> END
+                                                                              -> [conditional] -> END
     
     Returns:
         Compiled StateGraph ready for execution
@@ -74,12 +75,21 @@ def create_influencer_search_graph() -> StateGraph:
     )
     
     # Add nodes with single responsibilities
+    builder.add_node("clarify_with_user", clarify_with_user)
+    builder.add_node("write_research_brief", write_research_brief)
+    builder.add_node("research_supervisor", research_supervisor)
+    # Keep legacy nodes for fallback
     builder.add_node("parse_search_request", parse_search_request)
     builder.add_node("search_influencers", search_influencers)  
     builder.add_node("refine_search", refine_search)
     
     # Define graph flow
-    builder.add_edge(START, "parse_search_request")
+    # Start with clarification (which can be skipped via configuration)
+    builder.add_edge(START, "clarify_with_user")
+    # clarify_with_user uses Command to route to either write_research_brief or END
+    # write_research_brief uses Command to route to either research_supervisor or parse_search_request (fallback)
+    builder.add_edge("research_supervisor", END)
+    # Legacy search path for fallback
     builder.add_edge("parse_search_request", "search_influencers")
     
     # Conditional routing after search

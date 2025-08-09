@@ -173,3 +173,63 @@ class SearchResult(BaseModel):
                 "filters_applied": ["authenticity_check", "engagement_filter"]
             }
         }
+
+
+class ClarifyWithUser(BaseModel):
+    """Model for user clarification requests in influencer search context."""
+    
+    need_clarification: bool = Field(
+        description="Whether the user needs to be asked a clarifying question.",
+    )
+    question: str = Field(
+        description="A question to ask the user to clarify the search scope",
+    )
+    verification: str = Field(
+        description="Verification message that we will start search after the user has provided the necessary information.",
+    )
+
+
+class InfluencerResearchBrief(BaseModel):
+    """Structured research brief for influencer marketing campaigns."""
+    
+    research_brief: str = Field(
+        description="A comprehensive research brief that will guide the influencer marketing research and strategy development.",
+        min_length=100
+    )
+    target_platforms: List[str] = Field(
+        description="Social media platforms to focus on (e.g., Instagram, TikTok, YouTube, LinkedIn)",
+        examples=[["Instagram", "TikTok"], ["YouTube"], ["LinkedIn", "Twitter"]]
+    )
+    niche_focus: str = Field(
+        description="Primary content niche or industry vertical",
+        examples=["fitness", "beauty", "technology", "food", "travel", "business"]
+    )
+    geographic_focus: Optional[str] = Field(
+        description="Geographic targeting for influencers",
+        default=None,
+        examples=["US", "Europe", "Global", "Asia-Pacific"]
+    )
+    follower_range: Optional[str] = Field(
+        description="Desired influencer tier based on follower count",
+        default=None,
+        examples=["micro (1K-100K)", "mid-tier (100K-1M)", "macro (1M+)", "mixed"]
+    )
+    campaign_objectives: List[str] = Field(
+        description="Primary marketing objectives for the campaign",
+        examples=[["brand awareness", "product launch"], ["engagement boost"], ["sales conversion"]]
+    )
+    budget_considerations: Optional[str] = Field(
+        description="Budget constraints or investment level",
+        default=None,
+        examples=["startup budget ($1K-5K)", "enterprise level ($50K+)", "mid-market ($5K-50K)"]
+    )
+    content_preferences: Optional[List[str]] = Field(
+        description="Preferred content formats and styles",
+        default=None,
+        examples=[["video reviews", "unboxing"], ["tutorials", "lifestyle integration"], ["stories", "reels"]]
+    )
+    timeline: Optional[str] = Field(
+        description="Campaign timeline and urgency",
+        default=None,
+        examples=["immediate launch", "Q2 2024", "ongoing partnership", "seasonal campaign"]
+    )
