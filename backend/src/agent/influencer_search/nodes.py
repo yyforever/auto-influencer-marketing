@@ -8,26 +8,30 @@ following LangGraph best practices.
 
 import os
 import logging
-import time
-from typing import Dict, List, Any, Literal
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, get_buffer_string
+import asyncio
+from typing import Dict, Any, Literal
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.types import Command
-from langgraph.graph import END
+from langgraph.graph import StateGraph, START, END
 
 # Import local modules
 from .state import InfluencerSearchState
-from .schemas import InfluencerSearchQuery, InfluencerProfile, SearchResult, ClarifyWithUser, InfluencerResearchBrief
+from .schemas import (
+    ClarifyWithUser, InfluencerResearchBrief, 
+    SupervisorState, ConductInfluencerResearch, InfluencerResearchComplete
+)
 from .prompts import (
-    format_search_query_prompt,
-    format_results_summary_prompt,
-    format_no_results_prompt,
-    format_error_recovery_prompt,
     CLARIFY_WITH_USER_INSTRUCTIONS,
     TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT,
     INFLUENCER_RESEARCH_SUPERVISOR_PROMPT,
-    get_today_str
+    get_today_str,
+    think_tool,
+    get_notes_from_tool_calls,
+    get_api_key_for_model,
+    is_token_limit_exceeded,
+    configurable_model
 )
 from ..configuration import Configuration
 
@@ -35,299 +39,8 @@ from ..configuration import Configuration
 logger = logging.getLogger(__name__)
 
 
-def parse_search_request(
-    state: InfluencerSearchState, 
-    config: RunnableConfig
-) -> Dict[str, Any]:
-    """
-    Node 1: Parse user messages to extract structured search parameters.
-    
-    Purpose: Convert natural language requests into structured InfluencerSearchQuery
-    Input: User messages from state
-    Output: search_query field populated in state
-    """
-    logger.info("🔍 Starting search request parsing")
-    
-    try:
-        # Get configuration
-        configurable = Configuration.from_runnable_config(config)
-        
-        # Extract user messages
-        user_messages = get_buffer_string(state["messages"])
-        logger.info(f"Processing user messages: {user_messages[:200]}...")
-        
-        # Initialize LLM with structured output
-        llm = ChatGoogleGenerativeAI(
-            model=configurable.query_generator_model,
-            temperature=0.1,
-            max_retries=2,
-            timeout=60,
-            api_key=os.getenv("GEMINI_API_KEY"),
-        )
-        
-        # Use structured output for query extraction
-        structured_llm = llm.with_structured_output(InfluencerSearchQuery)
-        
-        # Format prompt and extract query
-        formatted_prompt = format_search_query_prompt(user_messages)
-        search_query = structured_llm.invoke(formatted_prompt)
-        
-        logger.info(f"🔍 Successfully parsed search query: {search_query}")
-        
-        return {
-            "search_query": search_query,
-            "query_parsed": True,
-            "last_error": None
-        }
-        
-    except Exception as e:
-        logger.error(f"Error parsing search request: {e}")
-        return {
-            "last_error": f"Failed to parse search request: {str(e)}",
-            "query_parsed": False,
-            "messages": [AIMessage(content=format_error_recovery_prompt(
-                str(e), 
-                get_buffer_string(state["messages"])
-            ))]
-        }
 
-
-def search_influencers(
-    state: InfluencerSearchState,
-    config: RunnableConfig
-) -> Dict[str, Any]:
-    """
-    Node 2: Execute influencer search based on parsed query parameters.
-    
-    Purpose: Perform the actual search and return mock influencer results
-    Input: search_query from state
-    Output: search_results and search_metadata populated
-    
-    Note: This is a demo implementation with mock data
-    In production, this would integrate with real influencer APIs
-    """
-    logger.info("🔍 Starting influencer search execution")
-    start_time = time.time()
-    
-    try:
-        # Validate input
-        search_query = state.get("search_query")
-        if not search_query:
-            raise ValueError("No search query found in state")
-        
-        logger.info(f"Searching for influencers with query: {search_query}")
-        
-        # Mock search implementation
-        # In production, this would call real APIs like:
-        # - Instagram Basic Display API
-        # - TikTok Creator API  
-        # - YouTube Data API
-        # - Third-party influencer platforms (AspireIQ, Klear, etc.)
-        
-        mock_influencers = _generate_mock_influencers(search_query)
-        
-        # Create search metadata
-        execution_time = int((time.time() - start_time) * 1000)
-        search_metadata = SearchResult(
-            query=search_query,
-            total_found=len(mock_influencers) + 50,  # Simulate larger pool
-            results_returned=len(mock_influencers),
-            search_duration_ms=execution_time,
-            filters_applied=["authenticity_check", "engagement_filter", "niche_match"]
-        )
-        
-        logger.info(f"🔍 Found {len(mock_influencers)} influencers in {execution_time}ms")
-        
-        # Generate result summary
-        if mock_influencers:
-            result_message = _generate_results_summary(search_query, mock_influencers, search_metadata)
-        else:
-            result_message = format_no_results_prompt(search_query.model_dump())
-        
-        return {
-            "search_results": mock_influencers,
-            "search_metadata": search_metadata,
-            "search_completed": True,
-            "applied_filters": search_metadata.filters_applied,
-            "last_error": None,
-            "messages": [AIMessage(content=result_message)]
-        }
-        
-    except Exception as e:
-        logger.error(f"Error during influencer search: {e}")
-        return {
-            "last_error": f"Search execution failed: {str(e)}",
-            "search_completed": False,
-            "messages": [AIMessage(content=format_error_recovery_prompt(
-                str(e),
-                f"Search query: {state.get('search_query', 'Unknown')}"
-            ))]
-        }
-
-
-def refine_search(
-    state: InfluencerSearchState,
-    config: RunnableConfig
-) -> Dict[str, Any]:
-    """
-    Node 3 (Optional): Refine search results based on additional criteria.
-    
-    Purpose: Apply additional filtering, ranking, or refinement
-    Input: search_results from previous search
-    Output: refined search_results
-    
-    This node can be used for:
-    - Advanced filtering
-    - Custom ranking algorithms
-    - Quality score adjustments
-    """
-    logger.info("🔍 Refining search results")
-    
-    try:
-        search_results = state.get("search_results", [])
-        search_query = state.get("search_query")
-        
-        if not search_results:
-            logger.warning("No search results to refine")
-            return {"last_error": None}
-        
-        # Apply refinement logic
-        refined_results = _apply_refinement_logic(search_results, search_query)
-        
-        logger.info(f"🔍 Refined {len(search_results)} -> {len(refined_results)} results")
-        
-        return {
-            "search_results": refined_results,
-            "applied_filters": ["quality_refinement", "relevance_boost"],
-            "last_error": None
-        }
-        
-    except Exception as e:
-        logger.error(f"Error during search refinement: {e}")
-        return {
-            "last_error": f"Search refinement failed: {str(e)}"
-        }
-
-
-# Private helper functions
-
-def _generate_mock_influencers(query: InfluencerSearchQuery) -> List[InfluencerProfile]:
-    """Generate mock influencer profiles based on search query"""
-    
-    mock_profiles = []
-    base_profiles = [
-        {
-            "username_suffix": "creator_1",
-            "followers": 50000,
-            "engagement_rate": 3.5,
-            "authenticity_score": 0.9,
-            "match_score": 0.85,
-            "email": "business@creator1.com"
-        },
-        {
-            "username_suffix": "creator_2", 
-            "followers": 75000,
-            "engagement_rate": 4.2,
-            "authenticity_score": 0.95,
-            "match_score": 0.92,
-            "email": "collabs@creator2.com"
-        },
-        {
-            "username_suffix": "creator_3",
-            "followers": 32000,
-            "engagement_rate": 5.8,
-            "authenticity_score": 0.88,
-            "match_score": 0.78,
-            "email": "partnerships@creator3.com"
-        }
-    ]
-    
-    for i, profile_data in enumerate(base_profiles):
-        # Skip if follower count is outside range
-        if (profile_data["followers"] < query.min_followers or 
-            profile_data["followers"] > query.max_followers):
-            continue
-            
-        profile = InfluencerProfile(
-            id=f"inf_{i+1:03d}",
-            username=f"@{query.niche}_{profile_data['username_suffix']}",
-            platform=query.platform,
-            display_name=f"{query.niche.title()} Creator {i+1}",
-            followers=profile_data["followers"],
-            engagement_rate=profile_data["engagement_rate"],
-            niche=query.niche,
-            bio=f"Certified {query.niche} expert sharing daily {query.keywords[0] if query.keywords else 'content'}",
-            verified=profile_data["followers"] > 40000,
-            audience_demographics={
-                "age_group": "18-34" if profile_data["followers"] < 60000 else "25-45",
-                "gender": "mixed",
-                "top_locations": [query.location] if query.location else ["US", "UK", "Canada"]
-            },
-            location=query.location or "Global",
-            contact_email=profile_data["email"],
-            historical_performance={
-                "avg_likes": int(profile_data["followers"] * profile_data["engagement_rate"] / 100 * 0.7),
-                "avg_comments": int(profile_data["followers"] * profile_data["engagement_rate"] / 100 * 0.05),
-                "avg_shares": int(profile_data["followers"] * profile_data["engagement_rate"] / 100 * 0.01)
-            },
-            authenticity_score=profile_data["authenticity_score"],
-            match_score=profile_data["match_score"]
-        )
-        mock_profiles.append(profile)
-    
-    return mock_profiles
-
-
-def _apply_refinement_logic(
-    results: List[InfluencerProfile], 
-    query: InfluencerSearchQuery
-) -> List[InfluencerProfile]:
-    """Apply refinement and ranking logic to search results"""
-    
-    # Sort by match score and authenticity
-    refined_results = sorted(
-        results,
-        key=lambda x: (x.match_score * 0.6 + x.authenticity_score * 0.4),
-        reverse=True
-    )
-    
-    # Apply additional quality filters
-    refined_results = [
-        profile for profile in refined_results
-        if profile.authenticity_score > 0.7 and profile.engagement_rate > 2.0
-    ]
-    
-    return refined_results
-
-
-def _generate_results_summary(
-    query: InfluencerSearchQuery,
-    results: List[InfluencerProfile], 
-    metadata: SearchResult
-) -> str:
-    """Generate formatted summary of search results"""
-    
-    # Create influencer list string
-    influencer_list = ""
-    for i, profile in enumerate(results, 1):
-        influencer_list += f"""
-{i}. {profile.username}
-   • 粉丝数: {profile.followers:,}
-   • 互动率: {profile.engagement_rate}%
-   • 匹配度: {profile.match_score:.0%}
-   • 真实度: {profile.authenticity_score:.0%}
-   • 联系方式: {profile.contact_email or 'N/A'}
-"""
-    
-    return format_results_summary_prompt(
-        search_query=query.model_dump(),
-        total_results=metadata.total_found,
-        returned_results=metadata.results_returned,
-        influencer_list=influencer_list
-    )
-
-
-async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig) -> Command[Literal["write_research_brief", "parse_search_request", "__end__"]]:
+async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig) -> Command[Literal["write_research_brief", "__end__"]]:
     """Analyze user messages and ask clarifying questions if the search scope is unclear.
     
     This function determines whether the user's request needs clarification before proceeding
@@ -391,12 +104,12 @@ async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig
             
     except Exception as e:
         logger.error(f"Error in clarification analysis: {e}")
-        # On error, proceed to search parsing to avoid blocking
+        # On error, proceed to research brief generation to avoid blocking
         return Command(
-            goto="parse_search_request",
+            goto="write_research_brief",
             update={
                 "last_error": f"Clarification analysis failed: {str(e)}",
-                "messages": [AIMessage(content="继续进行影响者搜索分析...")]
+                "messages": [AIMessage(content="继续进行影响者研究分析...")]
             }
         )
 
@@ -476,72 +189,301 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         
     except Exception as e:
         logger.error(f"Error in research brief generation: {e}")
-        # On error, fall back to simple search to avoid blocking
+        # On error, end workflow with error message
         error_message = f"Research brief generation failed: {str(e)}"
         return Command(
-            goto="parse_search_request",
+            goto=END,
             update={
                 "last_error": error_message,
-                "messages": [AIMessage(content="⚠️ 研究摘要生成遇到问题，回退到简单搜索模式...")]
+                "messages": [AIMessage(content="⚠️ 研究摘要生成遇到问题，无法继续处理请求。请重新描述您的需求。")]
             }
         )
 
 
-def research_supervisor(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """Research supervisor placeholder node for future implementation.
+async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[Literal["supervisor_tools"]]:
+    """Lead influencer marketing research supervisor that plans research strategy and delegates to researchers.
     
-    This is currently a placeholder node that acknowledges the research brief
-    and provides a summary response. In the future, this will coordinate
-    multiple research agents for comprehensive influencer marketing analysis.
+    The supervisor analyzes the research brief and decides how to break down the influencer marketing research
+    into manageable tasks. It can use think_tool for strategic planning, ConductInfluencerResearch
+    to delegate tasks to sub-researchers, or InfluencerResearchComplete when satisfied with findings.
     
     Args:
-        state: Current agent state containing research brief and metadata
-        config: Runtime configuration
+        state: Current supervisor state with messages and research context
+        config: Runtime configuration with model settings
         
     Returns:
-        Updated state with supervisor response
+        Command to proceed to supervisor_tools for tool execution
     """
-    logger.info("🎯 Research supervisor activated")
+    logger.info("🎯 Influencer marketing research supervisor activated")
     
-    # Extract research metadata if available
-    research_metadata = state.get("research_metadata", {})
-    research_brief = state.get("research_brief", "")
-    
-    # Generate supervisor response based on research brief
-    if research_metadata:
-        platforms = research_metadata.get("target_platforms", ["未指定"])
-        niche = research_metadata.get("niche_focus", "未指定")
-        objectives = research_metadata.get("campaign_objectives", ["待确定"])
-        
-        supervisor_response = f"""🎯 **影响者营销研究监督程序已启动**
-
-📊 **研究摘要概览**:
-• 目标平台: {', '.join(platforms)}  
-• 内容领域: {niche}
-• 营销目标: {', '.join(objectives)}
-
-📋 **研究计划** (占位符):
-1. 影响者发现与分析
-2. 竞争对手策略研究  
-3. 平台趋势分析
-4. 受众洞察收集
-5. 内容策略建议
-6. 性能基准研究
-
-✅ **当前状态**: 研究架构已就绪，等待完整研究功能实现
-
-*注: 这是一个占位符节点，完整的研究协调功能正在开发中*"""
-    else:
-        supervisor_response = """🎯 **影响者营销研究监督程序已启动**
-
-📋 **当前状态**: 正在分析研究需求...
-
-*注: 这是一个占位符节点，完整的研究协调功能正在开发中*"""
-    
-    logger.info("✅ Supervisor placeholder response generated")
-    
-    return {
-        "messages": [AIMessage(content=supervisor_response)],
-        "search_completed": True,
-        "supervisor_active": True
+    # Step 1: Configure the supervisor model with available tools
+    configurable = Configuration.from_runnable_config(config)
+    research_model_config = {
+        "model": configurable.research_model,
+        "max_tokens": configurable.research_model_max_tokens,
+        "api_key": get_api_key_for_model(configurable.research_model, config),
+        "tags": ["langsmith:nostream"]
     }
+    
+    # Available tools: research delegation, completion signaling, and strategic thinking
+    lead_researcher_tools = [ConductInfluencerResearch, InfluencerResearchComplete, think_tool]
+    
+    # Configure model with tools, retry logic, and model settings
+    research_model = (
+        configurable_model()
+        .bind_tools(lead_researcher_tools)
+        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+        .with_config(research_model_config)
+    )
+    
+    # Step 2: Generate supervisor response based on current context
+    supervisor_messages = state.get("supervisor_messages", [])
+    response = await research_model.ainvoke(supervisor_messages)
+    
+    logger.info(f"🎯 Supervisor generated response with {len(response.tool_calls) if response.tool_calls else 0} tool calls")
+    
+    # Step 3: Update state and proceed to tool execution
+    return Command(
+        goto="supervisor_tools",
+        update={
+            "supervisor_messages": [response],
+            "research_iterations": state.get("research_iterations", 0) + 1
+        }
+    )
+
+
+async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Command[Literal["supervisor", "__end__"]]:
+    """Execute tools called by the supervisor, including research delegation and strategic thinking.
+    
+    This function handles three types of supervisor tool calls:
+    1. think_tool - Strategic reflection that continues the conversation
+    2. ConductInfluencerResearch - Delegates research tasks to sub-researchers
+    3. InfluencerResearchComplete - Signals completion of research phase
+    
+    Args:
+        state: Current supervisor state with messages and iteration count
+        config: Runtime configuration with research limits and model settings
+        
+    Returns:
+        Command to either continue supervision loop or end research phase
+    """
+    logger.info("🔧 Executing supervisor tools")
+    
+    # Step 1: Extract current state and check exit conditions
+    configurable = Configuration.from_runnable_config(config)
+    supervisor_messages = state.get("supervisor_messages", [])
+    research_iterations = state.get("research_iterations", 0)
+    most_recent_message = supervisor_messages[-1] if supervisor_messages else None
+    
+    if not most_recent_message or not hasattr(most_recent_message, 'tool_calls'):
+        logger.warning("No recent message or tool calls found, ending research")
+        return Command(
+            goto=END,
+            update={
+                "notes": get_notes_from_tool_calls(supervisor_messages),
+                "research_brief": state.get("research_brief", "")
+            }
+        )
+    
+    # Define exit criteria for research phase
+    exceeded_allowed_iterations = research_iterations > configurable.max_researcher_iterations
+    no_tool_calls = not most_recent_message.tool_calls
+    research_complete_tool_call = any(
+        tool_call.get("name") == "InfluencerResearchComplete" 
+        for tool_call in most_recent_message.tool_calls
+    )
+    
+    # Exit if any termination condition is met
+    if exceeded_allowed_iterations or no_tool_calls or research_complete_tool_call:
+        logger.info(f"🏁 Ending research phase - iterations: {research_iterations}, tools: {len(most_recent_message.tool_calls)}")
+        return Command(
+            goto=END,
+            update={
+                "notes": get_notes_from_tool_calls(supervisor_messages),
+                "research_brief": state.get("research_brief", "")
+            }
+        )
+    
+    # Step 2: Process all tool calls together (both think_tool and ConductInfluencerResearch)
+    all_tool_messages = []
+    update_payload = {"supervisor_messages": []}
+    
+    # Handle think_tool calls (strategic reflection)
+    think_tool_calls = [
+        tool_call for tool_call in most_recent_message.tool_calls 
+        if tool_call.get("name") == "think_tool"
+    ]
+    
+    for tool_call in think_tool_calls:
+        reflection_content = tool_call["args"]["reflection"]
+        all_tool_messages.append(ToolMessage(
+            content=f"Strategic reflection recorded: {reflection_content}",
+            name="think_tool",
+            tool_call_id=tool_call["id"]
+        ))
+        logger.info(f"💭 Processed strategic reflection: {reflection_content[:100]}...")
+    
+    # Handle ConductInfluencerResearch calls (research delegation)
+    conduct_research_calls = [
+        tool_call for tool_call in most_recent_message.tool_calls 
+        if tool_call.get("name") == "ConductInfluencerResearch"
+    ]
+    
+    if conduct_research_calls:
+        logger.info(f"🔍 Processing {len(conduct_research_calls)} research delegation requests")
+        try:
+            # Limit concurrent research units to prevent resource exhaustion
+            allowed_conduct_research_calls = conduct_research_calls[:configurable.max_concurrent_research_units]
+            overflow_conduct_research_calls = conduct_research_calls[configurable.max_concurrent_research_units:]
+            
+            # For now, simulate research results since we don't have researcher_subgraph implementation
+            tool_results = []
+            for tool_call in allowed_conduct_research_calls:
+                research_topic = tool_call["args"]["research_topic"]
+                # Simulate research result
+                mock_result = {
+                    "compressed_research": f"研究结果: {research_topic} 的初步分析已完成。发现了相关的影响者营销机会和策略要点。",
+                    "raw_notes": [f"Research note for: {research_topic}"]
+                }
+                tool_results.append(mock_result)
+            
+            # Create tool messages with research results
+            for observation, tool_call in zip(tool_results, allowed_conduct_research_calls):
+                all_tool_messages.append(ToolMessage(
+                    content=observation.get("compressed_research", "Error synthesizing research report: Maximum retries exceeded"),
+                    name=tool_call.get("name", "ConductInfluencerResearch"),
+                    tool_call_id=tool_call["id"]
+                ))
+            
+            # Handle overflow research calls with error messages
+            for overflow_call in overflow_conduct_research_calls:
+                all_tool_messages.append(ToolMessage(
+                    content=f"Error: Did not run this research as you have already exceeded the maximum number of concurrent research units. Please try again with {configurable.max_concurrent_research_units} or fewer research units.",
+                    name="ConductInfluencerResearch",
+                    tool_call_id=overflow_call["id"]
+                ))
+            
+            # Aggregate raw notes from all research results
+            raw_notes_concat = "\n".join([
+                "\n".join(observation.get("raw_notes", [])) 
+                for observation in tool_results
+            ])
+            
+            if raw_notes_concat:
+                update_payload["raw_notes"] = [raw_notes_concat]
+                
+        except Exception as e:
+            logger.error(f"Error executing research: {e}")
+            # Handle research execution errors
+            if is_token_limit_exceeded(e, configurable.research_model) or True:
+                # Token limit exceeded or other error - end research phase
+                logger.warning("Research execution failed, ending research phase")
+                return Command(
+                    goto=END,
+                    update={
+                        "notes": get_notes_from_tool_calls(supervisor_messages),
+                        "research_brief": state.get("research_brief", "")
+                    }
+                )
+    
+    # Step 3: Return command with all tool results
+    update_payload["supervisor_messages"] = all_tool_messages
+    logger.info(f"✅ Processed {len(all_tool_messages)} tool messages, continuing supervision")
+    return Command(
+        goto="supervisor",
+        update=update_payload
+    )
+
+
+# Supervisor Subgraph Construction
+# Creates the supervisor workflow that manages research delegation and coordination
+supervisor_builder = StateGraph(SupervisorState, config_schema=Configuration)
+
+# Add supervisor nodes for research management
+supervisor_builder.add_node("supervisor", supervisor)           # Main supervisor logic
+supervisor_builder.add_node("supervisor_tools", supervisor_tools)  # Tool execution handler
+
+# Define supervisor workflow edges
+supervisor_builder.add_edge(START, "supervisor")  # Entry point to supervisor
+# supervisor_tools routes back to supervisor or END based on tool results
+
+# Compile supervisor subgraph for use in main workflow
+supervisor_subgraph = supervisor_builder.compile()
+
+
+def research_supervisor(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
+    """Research supervisor entry point that bridges main workflow to supervisor subgraph.
+    
+    This function serves as the integration point between the main influencer search workflow
+    and the specialized supervisor subgraph. It transforms the main state into supervisor state
+    and invokes the supervisor subgraph for comprehensive research coordination.
+    
+    Args:
+        state: Main workflow state containing research brief and context
+        config: Runtime configuration with model settings
+        
+    Returns:
+        Updated main workflow state with supervisor results
+    """
+    logger.info("🎯 Research supervisor bridge activated")
+    
+    try:
+        # Transform main state to supervisor state
+        supervisor_state = {
+            "supervisor_messages": state.get("supervisor_messages", []),
+            "research_brief": state.get("research_brief", ""),
+            "notes": [],
+            "research_iterations": 0,
+            "raw_notes": []
+        }
+        
+        # Invoke supervisor subgraph
+        logger.info("🚀 Invoking supervisor subgraph")
+        result = supervisor_subgraph.invoke(supervisor_state, config)
+        
+        # Extract final notes and create summary response
+        final_notes = result.get("notes", [])
+        research_brief = result.get("research_brief", "")
+        
+        if final_notes:
+            summary_response = f"""🎯 **影响者营销研究已完成**
+
+📊 **研究发现**:
+{chr(10).join(['• ' + note for note in final_notes[:5]])}
+
+✅ **研究状态**: 综合分析完成，已准备好战略建议
+
+📋 **研究摘要**: {research_brief[:200]}{'...' if len(research_brief) > 200 else ''}
+"""
+        else:
+            summary_response = """🎯 **影响者营销研究监督程序已完成**
+
+📋 **当前状态**: 研究协调已完成，正在准备最终报告...
+
+✅ **下一步**: 基于研究发现制定影响者营销策略"""
+        
+        logger.info("✅ Supervisor subgraph completed successfully")
+        
+        return {
+            "messages": [AIMessage(content=summary_response)],
+            "search_completed": True,
+            "supervisor_active": True,
+            "research_brief": result.get("research_brief", state.get("research_brief", "")),
+            "supervisor_messages": result.get("supervisor_messages", [])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in supervisor subgraph: {e}")
+        # Fallback response on error
+        error_response = f"""⚠️ **研究监督程序遇到问题**
+
+错误信息: {str(e)}
+
+🔄 **回退状态**: 将使用基础搜索功能继续处理请求"""
+        
+        return {
+            "messages": [AIMessage(content=error_response)],
+            "search_completed": True,
+            "supervisor_active": False,
+            "last_error": str(e)
+        }

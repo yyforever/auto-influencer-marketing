@@ -12,7 +12,7 @@ import operator
 from langgraph.graph import MessagesState
 from langchain_core.messages import BaseMessage
 
-from .schemas import InfluencerSearchQuery, InfluencerProfile, SearchResult
+# No legacy schema imports needed
 
 
 class InfluencerSearchInputState(MessagesState):
@@ -27,41 +27,11 @@ class InfluencerSearchInputState(MessagesState):
 
 class InfluencerSearchState(MessagesState):
     """
-    Complete state for influencer search workflow.
+    Complete state for influencer marketing research workflow.
     
     Extends MessagesState to maintain conversation history while adding
-    search-specific state fields. Uses Annotated types for proper
-    LangGraph state management and accumulation patterns.
+    research-specific state fields for the streamlined research-oriented workflow.
     """
-    
-    # Search Parameters
-    search_query: Optional[InfluencerSearchQuery] = None
-    """Parsed and structured search query"""
-    
-    # Search Results & Metadata
-    search_results: Annotated[List[InfluencerProfile], operator.add] = []
-    """List of found influencer profiles (accumulated)"""
-    
-    search_metadata: Optional[SearchResult] = None
-    """Metadata about the search execution"""
-    
-    # Workflow Control
-    search_completed: bool = False
-    """Flag indicating if search workflow is complete"""
-    
-    query_parsed: bool = False
-    """Flag indicating if user query has been parsed"""
-    
-    # Error Handling
-    last_error: Optional[str] = None
-    """Last error message if any step failed"""
-    
-    # Optional: Filtering and Ranking
-    applied_filters: Annotated[List[str], operator.add] = []
-    """List of filters applied during search (accumulated)"""
-    
-    ranking_criteria: Optional[dict] = None
-    """Criteria used for ranking results"""
     
     # Research Brief Workflow Fields
     research_brief: Optional[str] = None
@@ -75,31 +45,12 @@ class InfluencerSearchState(MessagesState):
     
     supervisor_active: bool = False
     """Flag indicating if research supervisor is active"""
-
-
-class InfluencerSearchWorkingState(TypedDict, total=False):
-    """
-    Working state for intermediate calculations.
     
-    This state is used for temporary data that doesn't need to be
-    persisted across the entire workflow. Useful for passing data
-    between closely related nodes.
-    """
-    
-    raw_search_results: List[dict]
-    """Raw API results before transformation to InfluencerProfile"""
-    
-    filtering_stats: dict
-    """Statistics about filtering process"""
-    
-    ranking_scores: dict
-    """Detailed ranking scores for debugging"""
-    
-    api_response_time: int
-    """API response time in milliseconds"""
+    # Error Handling
+    last_error: Optional[str] = None
+    """Last error message if any step failed"""
 
 
 # Type aliases for cleaner imports
 SearchInputState = InfluencerSearchInputState
 SearchState = InfluencerSearchState
-WorkingState = InfluencerSearchWorkingState
