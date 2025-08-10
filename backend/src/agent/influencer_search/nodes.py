@@ -27,11 +27,13 @@ from .prompts import (
     CLARIFY_WITH_USER_INSTRUCTIONS,
     TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT,
     INFLUENCER_RESEARCH_SUPERVISOR_PROMPT,
+    FINAL_REPORT_GENERATION_PROMPT,
     get_today_str,
     think_tool,
     get_notes_from_tool_calls,
     get_api_key_for_model,
     is_token_limit_exceeded,
+    get_model_token_limit,
     configurable_model,
     filter_messages,
     remove_up_to_last_ai_message,
@@ -471,25 +473,27 @@ def research_supervisor(state: InfluencerSearchState, config: RunnableConfig) ->
 📊 **研究发现**:
 {chr(10).join(['• ' + note for note in final_notes[:5]])}
 
-✅ **研究状态**: 综合分析完成，已准备好战略建议
+✅ **研究状态**: 综合分析完成，准备生成最终报告
 
 📋 **研究摘要**: {research_brief[:200]}{'...' if len(research_brief) > 200 else ''}
 """
         else:
             summary_response = """🎯 **影响者营销研究监督程序已完成**
 
-📋 **当前状态**: 研究协调已完成，正在准备最终报告...
+📋 **当前状态**: 研究协调已完成，准备生成最终报告...
 
-✅ **下一步**: 基于研究发现制定影响者营销策略"""
+✅ **下一步**: 基于研究发现生成综合性影响者营销报告"""
         
         logger.info("✅ Supervisor subgraph completed successfully")
+        logger.info(f"📝 Research notes collected: {len(final_notes)} items")
         
         return {
             "messages": [AIMessage(content=summary_response)],
             "search_completed": True,
             "supervisor_active": True,
             "research_brief": result.get("research_brief", state.get("research_brief", "")),
-            "supervisor_messages": result.get("supervisor_messages", [])
+            "supervisor_messages": result.get("supervisor_messages", []),
+            "notes": final_notes  # Pass research findings to final report generation
         }
         
     except Exception as e:
@@ -506,6 +510,140 @@ def research_supervisor(state: InfluencerSearchState, config: RunnableConfig) ->
             "search_completed": True,
             "supervisor_active": False,
             "last_error": str(e)
+        }
+
+
+async def final_report_generation(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
+    """Generate the final comprehensive influencer marketing research report with retry logic for token limits.
+    
+    This function takes all collected research findings and synthesizes them into a 
+    well-structured, comprehensive final report using the configured report generation model.
+    
+    Args:
+        state: Agent state containing research findings and context
+        config: Runtime configuration with model settings and API keys
+        
+    Returns:
+        Dictionary containing the final report and updated state
+    """
+    logger.info("📝 Starting final report generation")
+    
+    try:
+        # Step 1: Extract research findings and configuration
+        configurable = Configuration.from_runnable_config(config)
+        
+        # Check if final report generation is enabled
+        if not configurable.enable_final_report:
+            logger.info("Final report generation is disabled, skipping")
+            return {
+                "messages": [AIMessage(content="🎯 影响者营销研究已完成，未生成最终报告（已禁用）")],
+                "report_completed": False
+            }
+        
+        # Get research findings from notes
+        notes = state.get("notes", [])
+        findings = "\n".join(notes)
+        
+        if not findings.strip():
+            logger.warning("No research findings available for report generation")
+            return {
+                "final_report": "⚠️ 无法生成报告：未找到研究发现和数据",
+                "messages": [AIMessage(content="⚠️ 无法生成最终报告：缺少研究数据")],
+                "report_completed": False
+            }
+        
+        # Step 2: Configure the final report generation model
+        writer_model_config = {
+            "model": configurable.final_report_model,
+            "max_tokens": configurable.final_report_model_max_tokens,
+            "api_key": get_api_key_for_model(configurable.final_report_model, config),
+            "tags": ["langsmith:nostream"]
+        }
+        
+        logger.info(f"🤖 Using model {configurable.final_report_model} for report generation")
+        
+        # Step 3: Attempt report generation with token limit retry logic
+        max_retries = 3
+        current_retry = 0
+        findings_token_limit = None
+        
+        while current_retry <= max_retries:
+            try:
+                # Create comprehensive prompt with all research context
+                final_report_prompt = FINAL_REPORT_GENERATION_PROMPT.format(
+                    research_brief=state.get("research_brief", ""),
+                    messages=get_buffer_string(state.get("messages", [])),
+                    findings=findings,
+                    date=get_today_str()
+                )
+                
+                logger.info(f"🚀 Generating final report (attempt {current_retry + 1}/{max_retries + 1})")
+                
+                # Generate the final report
+                final_report = await configurable_model().with_config(writer_model_config).ainvoke([
+                    HumanMessage(content=final_report_prompt)
+                ])
+                
+                logger.info("✅ Final report generated successfully")
+                
+                # Return successful report generation
+                return {
+                    "final_report": final_report.content, 
+                    "messages": [final_report],
+                    "report_completed": True,
+                    "notes": []  # Clear notes after report generation
+                }
+                
+            except Exception as e:
+                # Handle token limit exceeded errors with progressive truncation
+                if is_token_limit_exceeded(e, configurable.final_report_model):
+                    current_retry += 1
+                    logger.warning(f"Token limit exceeded, attempting retry {current_retry}/{max_retries}")
+                    
+                    if current_retry == 1:
+                        # First retry: determine initial truncation limit
+                        model_token_limit = get_model_token_limit(configurable.final_report_model)
+                        if not model_token_limit:
+                            logger.error("Could not determine model token limit")
+                            return {
+                                "final_report": f"❌ 报告生成错误：Token限制超出，但无法确定模型的最大上下文长度。请检查模型配置。错误：{e}",
+                                "messages": [AIMessage(content="⚠️ 报告生成因token限制失败")],
+                                "report_completed": False
+                            }
+                        # Use 4x token limit as character approximation for truncation
+                        findings_token_limit = model_token_limit * 4
+                    else:
+                        # Subsequent retries: reduce by 10% each time
+                        findings_token_limit = int(findings_token_limit * 0.9)
+                    
+                    # Truncate findings and retry
+                    findings = findings[:findings_token_limit]
+                    logger.info(f"Truncated findings to {len(findings)} characters")
+                    continue
+                else:
+                    # Non-token-limit error: return error immediately
+                    logger.error(f"Report generation error: {e}")
+                    return {
+                        "final_report": f"❌ 报告生成错误：{str(e)}",
+                        "messages": [AIMessage(content="⚠️ 报告生成过程中发生错误")],
+                        "report_completed": False
+                    }
+        
+        # Step 4: Return failure result if all retries exhausted
+        logger.error("Report generation failed after maximum retries")
+        return {
+            "final_report": "❌ 报告生成错误：已达到最大重试次数",
+            "messages": [AIMessage(content="⚠️ 报告生成多次重试后失败")],
+            "report_completed": False
+        }
+        
+    except Exception as e:
+        logger.error(f"Critical error in final_report_generation: {e}")
+        # Fallback result
+        return {
+            "final_report": f"❌ 报告生成关键错误：{str(e)}",
+            "messages": [AIMessage(content="⚠️ 报告生成系统遇到严重错误")],
+            "report_completed": False
         }
 
 

@@ -96,6 +96,20 @@ class Configuration(BaseModel):
         default=None,
         metadata={"description": "Max tokens for compression model (uses research_model_max_tokens if None)."},
     )
+    
+    # Final Report Generation Configuration
+    final_report_model: str = Field(
+        default="gemini-2.5-pro",
+        metadata={"description": "The model to use for final report generation."},
+    )
+    final_report_model_max_tokens: int = Field(
+        default=8000,
+        metadata={"description": "Maximum tokens for final report model output."},
+    )
+    enable_final_report: bool = Field(
+        default=True,
+        metadata={"description": "Whether to generate a final comprehensive report after research."},
+    )
 
     @classmethod
     def from_runnable_config(

@@ -20,15 +20,15 @@
 **职责**: 定义顶层研究流程和节点连接关系
 
 ```python
-# 线性研究流程
-START → clarify_with_user → write_research_brief → research_supervisor → END
+# 完整研究到报告流程
+START → clarify_with_user → write_research_brief → research_supervisor → final_report_generation → END
 ```
 
 **关键特征**:
 - ✅ **配置驱动**: 通过 `Configuration` 控制节点行为
 - ✅ **条件路由**: 使用 `Command` 实现动态跳转逻辑
 - ✅ **状态类型安全**: 明确的输入/输出状态定义
-- ✅ **简洁设计**: 3个核心节点，职责清晰分离
+- ✅ **完整流程**: 4个核心节点，从研究到最终报告的端到端workflow
 
 **设计亮点**:
 ```python
@@ -50,6 +50,9 @@ InfluencerSearchState (主状态)
 ├── MessagesState (会话历史)
 ├── research_brief (研究摘要) 
 ├── supervisor_messages (监督对话)
+├── notes (研究发现累积)
+├── final_report (最终综合报告)
+├── report_completed (报告完成状态)
 └── error handling (错误状态)
 
 SupervisorState (监督状态)        ResearcherState (研究员状态)
@@ -129,7 +132,8 @@ SupervisorState (监督状态)        ResearcherState (研究员状态)
 主工作流节点 (Main Workflow)
 ├── clarify_with_user (澄清需求)
 ├── write_research_brief (生成研究摘要)
-└── research_supervisor (监督研究)
+├── research_supervisor (监督研究)
+└── final_report_generation (综合报告生成)
 
 监督子系统 (Supervisor Subsystem)
 ├── supervisor (规划研究策略)
@@ -278,6 +282,11 @@ max_react_tool_calls: int = 5
 # 压缩配置
 compression_model: Optional[str] = None
 compression_model_max_tokens: Optional[int] = None
+
+# 最终报告配置
+final_report_model: str = "gemini-2.5-pro"
+final_report_model_max_tokens: int = 8000
+enable_final_report: bool = True
 ```
 
 **环境变量支持**:

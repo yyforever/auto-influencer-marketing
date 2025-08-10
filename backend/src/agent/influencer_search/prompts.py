@@ -6,6 +6,7 @@ process, organized by functionality and optimized for Gemini models.
 """
 
 from datetime import datetime
+from typing import Optional
 
 # Legacy prompts removed - using research-oriented workflow only
 
@@ -402,3 +403,115 @@ def anthropic_websearch_called(message):
     """Check if Anthropic native web search was called."""
     # Placeholder for Anthropic web search detection  
     return False
+
+
+# Final Report Generation Prompt
+# ==============================
+
+FINAL_REPORT_GENERATION_PROMPT = """Based on all the influencer marketing research conducted, create a comprehensive, well-structured answer to the overall research brief:
+<Research Brief>
+{research_brief}
+</Research Brief>
+
+For more context, here is all of the messages so far. Focus on the research brief above, but consider these messages as well for more context.
+<Messages>
+{messages}
+</Messages>
+
+CRITICAL: Make sure the answer is written in the same language as the human messages!
+For example, if the user's messages are in English, then MAKE SURE you write your response in English. If the user's messages are in Chinese, then MAKE SURE you write your entire response in Chinese.
+This is critical. The user will only understand the answer if it is written in the same language as their input message.
+
+Today's date is {date}.
+
+Here are the findings from the influencer marketing research that you conducted:
+<Findings>
+{findings}
+</Findings>
+
+Please create a detailed influencer marketing research report that:
+1. Is well-organized with proper headings (# for title, ## for sections, ### for subsections)
+2. Includes specific facts, metrics, and insights from the research
+3. References relevant sources using [Title](URL) format
+4. Provides a balanced, thorough analysis focused on influencer marketing opportunities
+5. Includes actionable recommendations for influencer campaigns
+6. Includes a "Sources" section at the end with all referenced links
+
+Structure your influencer marketing report based on the research brief. Here are some examples:
+
+For influencer discovery and analysis:
+1/ Executive Summary
+2/ Influencer Landscape Overview
+3/ Top Recommended Influencers
+4/ Engagement Analysis & Performance Metrics
+5/ Campaign Strategy Recommendations
+6/ Budget and ROI Projections
+
+For platform or niche analysis:
+1/ Platform/Niche Overview
+2/ Key Trends and Opportunities
+3/ Audience Demographics and Behavior
+4/ Content Performance Analysis
+5/ Recommended Influencer Types
+6/ Campaign Execution Strategy
+
+For competitive analysis:
+1/ Competitive Landscape Overview
+2/ Competitor Influencer Partnerships
+3/ Campaign Performance Analysis
+4/ Gap Analysis and Opportunities
+5/ Strategic Recommendations
+6/ Implementation Timeline
+
+Remember: Structure is flexible based on the specific research brief!
+
+For each section of the report:
+- Use simple, professional language suitable for marketing professionals
+- Use ## for section title (Markdown format) for each section
+- Do NOT refer to yourself as the writer - this should be a professional report
+- Do not include meta-commentary about what you're doing
+- Each section should provide deep insights with supporting data and examples
+- Include specific metrics, engagement rates, follower counts when available
+- Use bullet points for lists but default to detailed paragraphs
+- Focus on actionable insights that can inform campaign decisions
+
+REMEMBER:
+The brief and research may be in English, but translate to match the user's language.
+Make sure the final report is in the SAME language as the human messages.
+
+Format the report in clear markdown with proper structure and include source references.
+
+<Citation Rules>
+- Assign each unique URL a single citation number in your text
+- End with ### Sources that lists each source with corresponding numbers
+- IMPORTANT: Number sources sequentially without gaps (1,2,3,4...) in the final list
+- Each source should be a separate line item in a list for proper markdown rendering
+- Example format:
+  [1] Source Title: URL
+  [2] Source Title: URL
+- Citations are crucial for credibility - ensure accuracy and completeness
+</Citation Rules>
+"""
+
+
+# Token Management and Model Utilities
+# ====================================
+
+def get_model_token_limit(model_name: str) -> Optional[int]:
+    """Get the maximum token limit for a given model."""
+    # Model token limits mapping
+    model_limits = {
+        "gemini-2.0-flash": 1000000,
+        "gemini-2.5-flash": 1000000, 
+        "gemini-2.5-pro": 2000000,
+        "gemini-1.5-pro": 2000000,
+        "gemini-1.5-flash": 1000000,
+    }
+    
+    # Check for model name variations
+    for model, limit in model_limits.items():
+        if model in model_name.lower():
+            return limit
+    
+    # Return None if model not found (will trigger error handling)
+    return None

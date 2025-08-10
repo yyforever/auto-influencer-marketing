@@ -46,6 +46,17 @@ class InfluencerSearchState(MessagesState):
     supervisor_active: bool = False
     """Flag indicating if research supervisor is active"""
     
+    # Research Results and Notes
+    notes: Annotated[List[str], operator.add] = []
+    """Research findings and notes collected during the workflow"""
+    
+    # Final Report Generation
+    final_report: Optional[str] = None
+    """Final comprehensive research report"""
+    
+    report_completed: bool = False
+    """Flag indicating if final report has been generated"""
+    
     # Error Handling
     last_error: Optional[str] = None
     """Last error message if any step failed"""
