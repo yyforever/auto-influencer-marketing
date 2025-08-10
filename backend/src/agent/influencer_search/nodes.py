@@ -64,6 +64,7 @@ async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig
     
     # Step 1: Check if clarification is enabled in configuration
     configurable = Configuration.from_runnable_config(config)
+    logger.info(f"Configurable: {configurable}")
     if not configurable.allow_clarification:
         # Skip clarification step and proceed directly to research brief generation
         logger.info("Clarification disabled, proceeding to research brief generation")
@@ -159,7 +160,7 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
             date=get_today_str()
         )
         
-        logger.info("🤖 Generating structured research brief...")
+        logger.info("🤖 Generating influencer structured research brief...")
         response = await research_model.ainvoke([HumanMessage(content=prompt_content)])
         
         # Step 3: Initialize supervisor with research brief and instructions
@@ -169,8 +170,9 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
             max_researcher_iterations=configurable.max_researcher_iterations
         )
         
-        logger.info("✅ Research brief generated successfully")
+        logger.info("✅ Influencer research brief generated successfully")
         logger.info(f"📊 Brief summary - Platforms: {response.target_platforms}, Niche: {response.niche_focus}")
+        logger.info(f"Structured influencer research brief: {response}")
         
         return Command(
             goto="research_supervisor", 
@@ -182,9 +184,9 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
                     "geographic_focus": response.geographic_focus,
                     "follower_range": response.follower_range,
                     "campaign_objectives": response.campaign_objectives,
-                    "budget_considerations": response.budget_considerations,
-                    "content_preferences": response.content_preferences,
-                    "timeline": response.timeline
+                    "budget": response.budget,
+                    "content_requirements": response.content_requirements,
+                    # timeline removed from schema; no longer included
                 },
                 "supervisor_messages": [
                     SystemMessage(content=supervisor_system_prompt),
@@ -433,84 +435,7 @@ supervisor_builder.add_edge(START, "supervisor")  # Entry point to supervisor
 supervisor_subgraph = supervisor_builder.compile()
 
 
-def research_supervisor(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """Research supervisor entry point that bridges main workflow to supervisor subgraph.
-    
-    This function serves as the integration point between the main influencer search workflow
-    and the specialized supervisor subgraph. It transforms the main state into supervisor state
-    and invokes the supervisor subgraph for comprehensive research coordination.
-    
-    Args:
-        state: Main workflow state containing research brief and context
-        config: Runtime configuration with model settings
-        
-    Returns:
-        Updated main workflow state with supervisor results
-    """
-    logger.info("🎯 Research supervisor bridge activated")
-    
-    try:
-        # Transform main state to supervisor state
-        supervisor_state = {
-            "supervisor_messages": state.get("supervisor_messages", []),
-            "research_brief": state.get("research_brief", ""),
-            "notes": [],
-            "research_iterations": 0,
-            "raw_notes": []
-        }
-        
-        # Invoke supervisor subgraph
-        logger.info("🚀 Invoking supervisor subgraph")
-        result = supervisor_subgraph.invoke(supervisor_state, config)
-        
-        # Extract final notes and create summary response
-        final_notes = result.get("notes", [])
-        research_brief = result.get("research_brief", "")
-        
-        if final_notes:
-            summary_response = f"""🎯 **影响者营销研究已完成**
-
-📊 **研究发现**:
-{chr(10).join(['• ' + note for note in final_notes[:5]])}
-
-✅ **研究状态**: 综合分析完成，准备生成最终报告
-
-📋 **研究摘要**: {research_brief[:200]}{'...' if len(research_brief) > 200 else ''}
-"""
-        else:
-            summary_response = """🎯 **影响者营销研究监督程序已完成**
-
-📋 **当前状态**: 研究协调已完成，准备生成最终报告...
-
-✅ **下一步**: 基于研究发现生成综合性影响者营销报告"""
-        
-        logger.info("✅ Supervisor subgraph completed successfully")
-        logger.info(f"📝 Research notes collected: {len(final_notes)} items")
-        
-        return {
-            "messages": [AIMessage(content=summary_response)],
-            "search_completed": True,
-            "supervisor_active": True,
-            "research_brief": result.get("research_brief", state.get("research_brief", "")),
-            "supervisor_messages": result.get("supervisor_messages", []),
-            "notes": final_notes  # Pass research findings to final report generation
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in supervisor subgraph: {e}")
-        # Fallback response on error
-        error_response = f"""⚠️ **研究监督程序遇到问题**
-
-错误信息: {str(e)}
-
-🔄 **回退状态**: 将使用基础搜索功能继续处理请求"""
-        
-        return {
-            "messages": [AIMessage(content=error_response)],
-            "search_completed": True,
-            "supervisor_active": False,
-            "last_error": str(e)
-        }
+## Deprecated bridge function removed after wiring subgraph directly in the main graph
 
 
 async def final_report_generation(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:

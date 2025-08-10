@@ -71,22 +71,32 @@ The messages that have been exchanged so far between yourself and the user are:
 Today's date is {date}.
 
 You will return a structured research brief and analysis that captures all the essential information for influencer marketing research.
+When possible, explicitly extract and populate only the following fields (do not go beyond them):
+1) brand_name, product_names, product_type, product_links, product_summary
+2) target_platforms
+3) niche_focus; geographic_focus; languages
+4) follower_range; influencer_count_target; expected_impressions
+5) campaign_objectives
+6) budget
+7) content_requirements; prohibited_claims_or_restrictions
+8) brand_tone_and_style; sample_offer
+If the user did not specify an item, set a sensible placeholder like "to be determined" or leave it null (None). Do not hallucinate facts.
 
 Guidelines:
 1. **Maximize Specificity for Influencer Marketing**
    - Include all known campaign objectives, target platforms, content preferences, and budget constraints
    - Specify desired influencer tiers (micro, mid-tier, macro), geographic targeting, and niche focus
-   - Detail content format preferences (videos, posts, stories, etc.) and campaign timeline
+   - Detail content format preferences (videos, posts, stories, etc.)
 
 2. **Fill in Unstated But Essential Dimensions**
-   - If certain key aspects (platform, niche, follower range) are essential but not provided, mark them as flexible or open-ended
-   - Don't assume specific budget ranges if not mentioned - mark as "to be determined"
-   - If geographic focus isn't specified, default to "flexible/global consideration"
+   - If certain key aspects (platform, niche, follower range) are essential but not provided, mark them as flexible/open-ended
+   - Don't assume specific budget ranges if not mentioned — use "to be determined" or leave null
+   - If geographic focus isn't specified, note as "flexible/global consideration" and add any region hints from context
 
 3. **Avoid Marketing Assumptions**
    - If the user hasn't specified campaign goals, don't invent them
    - If content formats aren't mentioned, mark as "open to recommendations"
-   - If timeline isn't provided, note as "flexible scheduling"
+   
 
 4. **Use Campaign-Focused Language**
    - Frame the research from the perspective of campaign planning and execution
@@ -99,10 +109,11 @@ Guidelines:
 
 6. **ROI and Performance Considerations**
    - Include measurable objectives and KPIs where specified
-   - Consider conversion tracking and attribution requirements
+   - Consider conversion tracking and attribution requirements (e.g., UTMs, affiliate codes)
    - Factor in content authenticity and brand alignment needs
 
-The research brief should guide comprehensive influencer discovery, vetting, and strategic campaign planning."""
+The research brief should guide comprehensive influencer discovery, vetting, and strategic campaign planning.
+"""
 
 INFLUENCER_RESEARCH_SUPERVISOR_PROMPT = """You are an Influencer Marketing Research Supervisor. Your job is to conduct comprehensive influencer marketing research by delegating tasks to specialized research agents. Today's date is {date}.
 

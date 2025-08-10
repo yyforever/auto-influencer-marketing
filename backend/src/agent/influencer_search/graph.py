@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, START, END
 
 # Import local modules
 from agent.influencer_search.state import InfluencerSearchState, InfluencerSearchInputState
-from agent.influencer_search.nodes import clarify_with_user, write_research_brief, research_supervisor, final_report_generation
+from agent.influencer_search.nodes import clarify_with_user, write_research_brief, final_report_generation, supervisor_subgraph
 from agent.configuration import Configuration
 
 # Setup logging
@@ -46,7 +46,8 @@ def create_influencer_search_graph() -> StateGraph:
     # Add nodes for the complete research-to-report workflow
     builder.add_node("clarify_with_user", clarify_with_user)
     builder.add_node("write_research_brief", write_research_brief)
-    builder.add_node("research_supervisor", research_supervisor)
+    # Directly use the compiled supervisor subgraph as a node (no bridge function)
+    builder.add_node("research_supervisor", supervisor_subgraph)
     builder.add_node("final_report_generation", final_report_generation)
     
     # Define sequential graph flow

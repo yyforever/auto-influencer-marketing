@@ -34,12 +34,37 @@ class InfluencerResearchBrief(BaseModel):
     """Structured research brief for influencer marketing campaigns."""
     
     research_brief: str = Field(
-        description="A comprehensive research brief that will guide the influencer marketing research and strategy development.",
-        min_length=100
+        description="A comprehensive research brief that will guide the influencer marketing research and strategy development. Brief should include all key information for influencer marketing research."
+    )
+    # Core campaign context (aligned to test case)
+    brand_name: Optional[str] = Field(
+        description="Brand name for the campaign (e.g., 'HeyGears')",
+        default=None,
+        examples=["HeyGears"]
+    )
+    product_names: Optional[List[str]] = Field(
+        description="Product names involved in the campaign (e.g., 'UltraCraft 3D Printer', 'U1 Custom Earbuds')",
+        default=None,
+        examples=[["UltraCraft 3D Printer", "U1 Custom Earbuds"]]
+    )
+    product_type: Optional[str] = Field(
+        description="Product type/category (e.g., 'Physical Product').",
+        default=None,
+        examples=["Physical Product"]
+    )
+    product_links: Optional[List[str]] = Field(
+        description="Relevant product or landing page URLs to reference in research and content.",
+        default=None,
+        examples=[["https://store.heygears.com/collections/3d-printers"]]
+    )
+    product_summary: Optional[str] = Field(
+        description="Product overview including price notes and key description (free-form).",
+        default=None,
+        examples=["$979-$1,399; 系统 $1,749；定制耳机定价。高精度DLP 3D打印机，25μm 精度，TI DLP 技术，适用于牙科/消费电子/珠宝/工程原型等，支持量产"]
     )
     target_platforms: List[str] = Field(
         description="Social media platforms to focus on (e.g., Instagram, TikTok, YouTube, LinkedIn)",
-        examples=[["Instagram", "TikTok"], ["YouTube"], ["LinkedIn", "Twitter"]]
+        examples=[["Instagram", "TikTok"], ["YouTube"], ["LinkedIn"]]
     )
     niche_focus: str = Field(
         description="Primary content niche or industry vertical",
@@ -50,29 +75,38 @@ class InfluencerResearchBrief(BaseModel):
         default=None,
         examples=["US", "Europe", "Global", "Asia-Pacific"]
     )
+    languages: Optional[List[str]] = Field(
+        description="Primary content or audience languages (e.g., ['English']).",
+        default=None,
+        examples=[["English"]]
+    )
     follower_range: Optional[str] = Field(
         description="Desired influencer tier based on follower count",
         default=None,
         examples=["micro (1K-100K)", "mid-tier (100K-1M)", "macro (1M+)", "mixed"]
     )
+    influencer_count_target: Optional[str] = Field(
+        description="Target number of influencers to collaborate with (e.g., '25-30').",
+        default=None,
+        examples=["25-30"]
+    )
+    expected_impressions: Optional[str] = Field(
+        description="Target or expected total impressions across campaign (e.g., '2,000,000').",
+        default=None,
+        examples=["2,000,000"]
+    )
     campaign_objectives: List[str] = Field(
         description="Primary marketing objectives for the campaign",
         examples=[["brand awareness", "product launch"], ["engagement boost"], ["sales conversion"]]
     )
-    budget_considerations: Optional[str] = Field(
-        description="Budget constraints or investment level",
+    budget: Optional[str] = Field(
+        description="Total budget and any constraints/notes (free-form, e.g., '$15,000').",
         default=None,
-        examples=["startup budget ($1K-5K)", "enterprise level ($50K+)", "mid-market ($5K-50K)"]
+        examples=["$15,000"]
     )
-    content_preferences: Optional[List[str]] = Field(
-        description="Preferred content formats and styles",
-        default=None,
-        examples=[["video reviews", "unboxing"], ["tutorials", "lifestyle integration"], ["stories", "reels"]]
-    )
-    timeline: Optional[str] = Field(
-        description="Campaign timeline and urgency",
-        default=None,
-        examples=["immediate launch", "Q2 2024", "ongoing partnership", "seasonal campaign"]
+    content_requirements: Optional[List[str]] = Field(
+        description="Content formats and mandatory elements combined (e.g., YouTube长视频+精度对比、应用场景、技术参数、ROI等)。",
+        default=None
     )
 
 
