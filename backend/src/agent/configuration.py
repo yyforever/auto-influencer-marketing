@@ -9,14 +9,14 @@ class Configuration(BaseModel):
     """The configuration for the agent."""
 
     query_generator_model: str = Field(
-        default="gemini-2.0-flash",
+        default="gemini-2.5-pro",
         metadata={
             "description": "The name of the language model to use for the agent's query generation."
         },
     )
 
     reflection_model: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-2.5-pro",
         metadata={
             "description": "The name of the language model to use for the agent's reflection."
         },
@@ -53,11 +53,11 @@ class Configuration(BaseModel):
     
     # Research Configuration
     research_model: str = Field(
-        default="gemini-2.0-flash",
+        default="gemini-2.5-pro",
         metadata={"description": "The model to use for research brief generation."},
     )
     research_model_max_tokens: int = Field(
-        default=4000,
+        default=8000,
         metadata={"description": "Maximum tokens for research model output."},
     )
     max_structured_output_retries: int = Field(
@@ -103,7 +103,7 @@ class Configuration(BaseModel):
         metadata={"description": "The model to use for final report generation."},
     )
     final_report_model_max_tokens: int = Field(
-        default=8000,
+        default=12000,
         metadata={"description": "Maximum tokens for final report model output."},
     )
     enable_final_report: bool = Field(

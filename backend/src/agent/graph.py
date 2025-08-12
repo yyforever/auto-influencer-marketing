@@ -23,7 +23,7 @@ from agent.prompts import (
     reflection_instructions,
     answer_instructions,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chat_models import init_chat_model
 from agent.utils import (
     get_citations,
     get_research_topic,
@@ -33,11 +33,57 @@ from agent.utils import (
 
 load_dotenv()
 
-if os.getenv("GEMINI_API_KEY") is None:
-    raise ValueError("GEMINI_API_KEY is not set")
+# Initialize configurable model for all LLM operations
+def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0.0):
+    """Create a model instance with proper provider detection."""
+    api_key = get_api_key_for_model(model_name)
+    
+    if "gpt" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    elif "gemini" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="google-genai",
+            api_key=api_key,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    else:
+        # Default to OpenAI
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
-# Used for Google Search API
-genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+def get_api_key_for_model(model_name: str) -> str:
+    """Get appropriate API key for the specified model."""
+    # For GPT models (including GPT-5), use the OPENAI_API_KEY
+    if "gpt" in model_name.lower():
+        return os.getenv("OPENAI_API_KEY", "")
+    
+    # For Gemini models, use the GEMINI_API_KEY
+    if "gemini" in model_name.lower():
+        return os.getenv("GEMINI_API_KEY", "")
+    
+    # Default to OpenAI for unknown models
+    return os.getenv("OPENAI_API_KEY", "")
+
+# Used for Google Search API (keep for native search functionality)
+if os.getenv("GEMINI_API_KEY"):
+    genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+else:
+    genai_client = None
 
 
 # Nodes
@@ -60,13 +106,8 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
     if state.get("initial_search_query_count") is None:
         state["initial_search_query_count"] = configurable.number_of_initial_queries
 
-    # init Gemini 2.0 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
-        temperature=1.0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    # Init model for query generation
+    llm = create_model(configurable.query_generator_model, max_tokens=4000, temperature=1.0)
     structured_llm = llm.with_structured_output(SearchQueryList)
 
     # Format the prompt
@@ -162,13 +203,8 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
         research_topic=get_research_topic(state["messages"]),
         summaries="\n\n---\n\n".join(state["web_research_result"]),
     )
-    # init Reasoning Model
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
-        temperature=1.0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    # Init reasoning model
+    llm = create_model(reasoning_model, max_tokens=4000, temperature=1.0)
     result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
 
     return {
@@ -241,13 +277,8 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
         summaries="\n---\n\n".join(state["web_research_result"]),
     )
 
-    # init Reasoning Model, default to Gemini 2.5 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
-        temperature=0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    # Init reasoning model
+    llm = create_model(reasoning_model, max_tokens=8000, temperature=0.0)
     result = llm.invoke(formatted_prompt)
 
     # Replace the short urls with the original urls and add all used urls to the sources_gathered

@@ -112,11 +112,15 @@ class InfluencerResearchBrief(BaseModel):
 
 # Supervisor State and Tools for Research Coordination
 # ====================================================
-
-def override_reducer(existing_value: list, new_value: list) -> list:
-    """Reducer that replaces the existing value with the new value."""
-    # pylint: disable=unused-argument
-    return new_value
+# Setup logging
+import logging
+logger = logging.getLogger(__name__)
+def override_reducer(current_value, new_value):
+    """Reducer function that allows overriding values in state."""
+    if isinstance(new_value, dict) and new_value.get("type") == "override":
+        return new_value.get("value", new_value)
+    else:
+        return operator.add(current_value, new_value)
 
 class SupervisorState(TypedDict):
     """State for the influencer marketing research supervisor."""

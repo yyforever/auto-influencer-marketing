@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chat_models import init_chat_model
 
 # Import state management
 from agent.state.states import AgentInputState, AgentState, CampaignState
@@ -28,9 +28,51 @@ from agent.utils import setup_campaign_logging, log_phase_transition
 # Load environment variables
 load_dotenv()
 
-# Validate required environment variables
-if os.getenv("GEMINI_API_KEY") is None:
-    raise ValueError("GEMINI_API_KEY is not set")
+# Initialize configurable model
+def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0.0):
+    """Create a model instance with proper provider detection."""
+    api_key = get_api_key_for_model(model_name)
+    
+    if "gpt" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    elif "gemini" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="google-genai",
+            api_key=api_key,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    else:
+        # Default to OpenAI
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+def get_api_key_for_model(model_name: str) -> str:
+    """Get appropriate API key for the specified model."""
+    # For GPT models (including GPT-5), use the OPENAI_API_KEY
+    if "gpt" in model_name.lower():
+        return os.getenv("OPENAI_API_KEY", "")
+    
+    # For Gemini models, use the GEMINI_API_KEY
+    if "gemini" in model_name.lower():
+        return os.getenv("GEMINI_API_KEY", "")
+    
+    # Default to OpenAI for unknown models
+    return os.getenv("OPENAI_API_KEY", "")
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -50,13 +92,7 @@ def initialize_campaign_info(state: AgentState, config: RunnableConfig) -> Agent
     user_messages = get_buffer_string(state["messages"])
     
     # Initialize LLM with structured output for information extraction
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
-        temperature=0.1,
-        max_retries=2,
-        timeout=60,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm = create_model(configurable.query_generator_model, max_tokens=4000, temperature=0.1)
     
     # Use CampaignBasicInfo for information extraction
     structured_llm = llm.with_structured_output(CampaignBasicInfo)
@@ -86,10 +122,7 @@ def auto_clarify_campaign_info(state: AgentState, config: RunnableConfig) -> Com
     #     return Command(goto="request_human_review")
     
     # Initialize LLM for clarification assessment
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm = create_model(configurable.query_generator_model, max_tokens=4000, temperature=0.0)
     
     # Use CalarifyCampaignInfoWithHuman for clarification judgment
     structured_llm = llm.with_structured_output(CalarifyCampaignInfoWithHuman)

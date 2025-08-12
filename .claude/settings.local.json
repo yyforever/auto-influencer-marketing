@@ -21,7 +21,8 @@
       "WebFetch(domain:langchain-ai.github.io)",
       "WebFetch(domain:changelog.langchain.com)",
       "Bash(timeout:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(uv pip install:*)"
     ],
     "deny": []
   }

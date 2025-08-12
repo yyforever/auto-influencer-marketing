@@ -18,6 +18,14 @@ dependencies = [
     "langgraph-api",
     "fastapi",
     "google-genai",
+    "distro",
+    "jiter",
+    "langchain-openai",
+    "openai",
+    "regex",
+    "socksio",
+    "tiktoken",
+    "tqdm",
 ]
 
 

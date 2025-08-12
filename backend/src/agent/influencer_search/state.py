@@ -11,6 +11,7 @@ import operator
 
 from langgraph.graph import MessagesState
 from langchain_core.messages import BaseMessage
+from .schemas import override_reducer
 
 # No legacy schema imports needed
 
@@ -40,14 +41,14 @@ class InfluencerSearchState(MessagesState):
     research_metadata: Optional[dict] = None
     """Structured metadata from research brief generation"""
     
-    supervisor_messages: Annotated[List[BaseMessage], operator.add] = []
+    supervisor_messages: Annotated[List[BaseMessage], override_reducer] = []
     """Messages for supervisor conversation (accumulated)"""
     
     supervisor_active: bool = False
     """Flag indicating if research supervisor is active"""
     
     # Research Results and Notes
-    notes: Annotated[List[str], operator.add] = []
+    notes: Annotated[List[str], override_reducer] = []
     """Research findings and notes collected during the workflow"""
     
     # Final Report Generation

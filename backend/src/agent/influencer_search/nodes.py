@@ -6,13 +6,12 @@ for the influencer search agent. Each node has a single responsibility
 following LangGraph best practices.
 """
 
-import os
 import logging
 import asyncio
 from typing import Dict, Any, Literal
+from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage, get_buffer_string
 from langchain_core.runnables import RunnableConfig
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.types import Command
 from langgraph.graph import StateGraph, START, END
 
@@ -34,7 +33,6 @@ from .prompts import (
     get_api_key_for_model,
     is_token_limit_exceeded,
     get_model_token_limit,
-    configurable_model,
     filter_messages,
     remove_up_to_last_ai_message,
     openai_websearch_called,
@@ -44,6 +42,41 @@ from ..configuration import Configuration
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Initialize a configurable model that we will use throughout the agent
+def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0.0):
+    """Create a model instance with proper provider detection."""
+    import os
+    
+    api_key = get_api_key_for_model(model_name, None)
+    
+    if "gpt" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    elif "gemini" in model_name.lower():
+        return init_chat_model(
+            model=model_name,
+            model_provider="google-genai",
+            api_key=api_key,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    else:
+        # Default to OpenAI
+        return init_chat_model(
+            model=model_name,
+            model_provider="openai",
+            api_key=api_key,
+            base_url=os.getenv("OPENAI_BASE_URL"),
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
 
 
@@ -73,16 +106,17 @@ async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig
     # Step 2: Prepare the model for structured clarification analysis
     messages = state["messages"]
     
-    # Initialize LLM with Gemini
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,  # Use same model as query generation
-        temperature=0.1,  # Lower temperature for consistent analysis
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
+    # Configure model with structured output and retry logic
+    base_model = create_model(
+        configurable.query_generator_model,
+        max_tokens=configurable.research_model_max_tokens,
+        temperature=0.0
     )
-    
-    # Configure model with structured output
-    clarification_model = llm.with_structured_output(ClarifyWithUser)
+    clarification_model = (
+        base_model
+        .with_structured_output(ClarifyWithUser)
+        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+    )
     
     # Step 3: Analyze whether clarification is needed
     prompt_content = CLARIFY_WITH_USER_INSTRUCTIONS.format(
@@ -142,17 +176,17 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         # Step 1: Set up the research model for structured output
         configurable = Configuration.from_runnable_config(config)
         
-        # Initialize LLM with Gemini for structured research brief generation
-        llm = ChatGoogleGenerativeAI(
-            model=configurable.research_model,
-            temperature=0.1,  # Lower temperature for consistent structured output
-            max_tokens=configurable.research_model_max_tokens,
-            max_retries=configurable.max_structured_output_retries,
-            api_key=os.getenv("GEMINI_API_KEY"),
-        )
-        
         # Configure model for structured research brief generation
-        research_model = llm.with_structured_output(InfluencerResearchBrief)
+        base_model = create_model(
+            configurable.research_model,
+            max_tokens=configurable.research_model_max_tokens,
+            temperature=0.0
+        )
+        research_model = (
+            base_model
+            .with_structured_output(InfluencerResearchBrief)
+            .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+        )
         
         # Step 2: Generate structured research brief from user messages
         prompt_content = TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT.format(
@@ -171,7 +205,6 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         )
         
         logger.info("✅ Influencer research brief generated successfully")
-        logger.info(f"📊 Brief summary - Platforms: {response.target_platforms}, Niche: {response.niche_focus}")
         logger.info(f"Structured influencer research brief: {response}")
         
         return Command(
@@ -188,10 +221,13 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
                     "content_requirements": response.content_requirements,
                     # timeline removed from schema; no longer included
                 },
-                "supervisor_messages": [
-                    SystemMessage(content=supervisor_system_prompt),
-                    HumanMessage(content=response.research_brief)
-                ],
+                "supervisor_messages": {
+                    "type": "override",
+                    "value": [
+                        SystemMessage(content=supervisor_system_prompt),
+                        HumanMessage(content=response.research_brief)
+                    ]
+                },
                 "messages": [AIMessage(content="🔍 已生成影响者营销研究摘要，正在启动研究监督程序...")]
             }
         )
@@ -238,11 +274,15 @@ async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[
     lead_researcher_tools = [ConductInfluencerResearch, InfluencerResearchComplete, think_tool]
     
     # Configure model with tools, retry logic, and model settings
+    base_model = create_model(
+        configurable.research_model,
+        max_tokens=configurable.research_model_max_tokens,
+        temperature=0.0
+    )
     research_model = (
-        configurable_model()
+        base_model
         .bind_tools(lead_researcher_tools)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
-        .with_config(research_model_config)
     )
     
     # Step 2: Generate supervisor response based on current context
@@ -505,7 +545,12 @@ async def final_report_generation(state: InfluencerSearchState, config: Runnable
                 logger.info(f"🚀 Generating final report (attempt {current_retry + 1}/{max_retries + 1})")
                 
                 # Generate the final report
-                final_report = await configurable_model().with_config(writer_model_config).ainvoke([
+                writer_model = create_model(
+                    configurable.final_report_model,
+                    max_tokens=configurable.final_report_model_max_tokens,
+                    temperature=0.0
+                )
+                final_report = await writer_model.ainvoke([
                     HumanMessage(content=final_report_prompt)
                 ])
                 
@@ -622,11 +667,15 @@ async def researcher(state, config: RunnableConfig) -> Command[Literal["research
         )
         
         # Configure model with tools, retry logic, and settings
+        base_model = create_model(
+            configurable.research_model,
+            max_tokens=configurable.research_model_max_tokens,
+            temperature=0.0
+        )
         research_model = (
-            configurable_model()
+            base_model
             .bind_tools(tools)
             .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
-            .with_config(research_model_config)
         )
         
         # Step 3: Generate researcher response with system context
@@ -781,12 +830,18 @@ async def compress_research(state, config: RunnableConfig):
     try:
         # Step 1: Configure the compression model
         configurable = Configuration.from_runnable_config(config)
-        synthesizer_model = configurable_model().with_config({
-            "model": configurable.compression_model if hasattr(configurable, 'compression_model') else configurable.research_model,
-            "max_tokens": configurable.compression_model_max_tokens if hasattr(configurable, 'compression_model_max_tokens') else configurable.research_model_max_tokens,
-            "api_key": get_api_key_for_model(configurable.research_model, config),
-            "tags": ["langsmith:nostream"]
-        })
+        compression_model_name = (configurable.compression_model 
+                                if hasattr(configurable, 'compression_model') and configurable.compression_model
+                                else configurable.research_model)
+        compression_max_tokens = (configurable.compression_model_max_tokens 
+                                if hasattr(configurable, 'compression_model_max_tokens') and configurable.compression_model_max_tokens
+                                else configurable.research_model_max_tokens)
+        
+        synthesizer_model = create_model(
+            compression_model_name,
+            max_tokens=compression_max_tokens,
+            temperature=0.0
+        )
         
         # Step 2: Prepare messages for compression
         researcher_messages = state.get("researcher_messages", [])

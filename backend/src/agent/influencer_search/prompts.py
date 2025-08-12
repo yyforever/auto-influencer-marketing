@@ -235,9 +235,14 @@ def get_notes_from_tool_calls(supervisor_messages) -> list:
 
 def get_api_key_for_model(model_name: str, config) -> str:
     """Get appropriate API key for the specified model."""
+    import os
+    
+    # For GPT models (including GPT-5), use the OPENAI_API_KEY
+    if "gpt" in model_name.lower():
+        return os.getenv("OPENAI_API_KEY", "")
+    
     # For Gemini models, use the GEMINI_API_KEY
     if "gemini" in model_name.lower():
-        import os
         return os.getenv("GEMINI_API_KEY", "")
     
     # Add other model API key logic here as needed
@@ -258,13 +263,6 @@ def is_token_limit_exceeded(exception: Exception, model_name: str) -> bool:
     ]
     
     return any(indicator in error_message for indicator in token_limit_indicators)
-
-
-def configurable_model():
-    """Placeholder for configurable model - to be implemented with actual model configuration."""
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model="gemini-2.0-flash")
-
 
 # Individual Researcher Prompts
 # ==============================
@@ -512,14 +510,25 @@ def get_model_token_limit(model_name: str) -> Optional[int]:
     """Get the maximum token limit for a given model."""
     # Model token limits mapping
     model_limits = {
-        "gemini-2.0-flash": 1000000,
+        # GPT Models
+        "gpt-5": 128000,
+        "gpt-4o": 128000,
+        "gpt-4o-mini": 128000,
+        "gpt-4": 128000,
+        "gpt-3.5": 16385,
+        # Gemini Models (优先匹配具体版本)
+        "gemini-2.5-pro": 1000000,  # 1M tokens context window
         "gemini-2.5-flash": 1000000, 
-        "gemini-2.5-pro": 2000000,
+        "gemini-2.0-flash": 1000000,
         "gemini-1.5-pro": 2000000,
         "gemini-1.5-flash": 1000000,
     }
     
-    # Check for model name variations
+    # Check for model name variations (exact match first, then partial)
+    if model_name.lower() in model_limits:
+        return model_limits[model_name.lower()]
+    
+    # Check for partial matches
     for model, limit in model_limits.items():
         if model in model_name.lower():
             return limit
