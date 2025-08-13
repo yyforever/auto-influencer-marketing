@@ -5,12 +5,8 @@ Defines structured data models for influencer search queries, results,
 and related data structures used throughout the search workflow.
 """
 
-from typing import List, Optional, Annotated
-from typing_extensions import TypedDict
+from typing import List, Optional
 from pydantic import BaseModel, Field
-import operator
-
-from langchain_core.messages import BaseMessage
 
 
 # Legacy schemas removed - using research-oriented workflow only
@@ -110,26 +106,8 @@ class InfluencerResearchBrief(BaseModel):
     )
 
 
-# Supervisor State and Tools for Research Coordination
-# ====================================================
-# Setup logging
-import logging
-logger = logging.getLogger(__name__)
-def override_reducer(current_value, new_value):
-    """Reducer function that allows overriding values in state."""
-    if isinstance(new_value, dict) and new_value.get("type") == "override":
-        return new_value.get("value", new_value)
-    else:
-        return operator.add(current_value, new_value)
-
-class SupervisorState(TypedDict):
-    """State for the influencer marketing research supervisor."""
-    
-    supervisor_messages: Annotated[List[BaseMessage], override_reducer]
-    research_brief: str
-    notes: Annotated[List[str], override_reducer]
-    research_iterations: int
-    raw_notes: Annotated[List[str], override_reducer]
+# Tool Models for Research Coordination
+# ====================================
 
 
 class ConductInfluencerResearch(BaseModel):
@@ -159,23 +137,3 @@ class ResearchComplete(BaseModel):
     pass  # No parameters needed - completion signal only
 
 
-# Researcher State Management for Individual Research Tasks
-# ========================================================
-
-class ResearcherInputState(TypedDict):
-    """Input state for individual researcher agents."""
-    researcher_messages: Annotated[List[BaseMessage], override_reducer]
-    research_topic: str
-
-
-class ResearcherState(TypedDict):
-    """Complete state for individual researcher workflow."""
-    researcher_messages: Annotated[List[BaseMessage], override_reducer]
-    research_topic: str
-    tool_call_iterations: int
-
-
-class ResearcherOutputState(TypedDict):
-    """Output state from researcher with compressed results."""
-    compressed_research: str
-    raw_notes: Annotated[List[str], override_reducer]

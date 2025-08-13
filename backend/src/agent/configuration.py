@@ -8,24 +8,18 @@ from langchain_core.runnables import RunnableConfig
 class Configuration(BaseModel):
     """The configuration for the agent."""
 
-    query_generator_model: str = Field(
-        default="gemini-2.5-pro",
+    # Core model configuration - simplified to provider:model format
+    default_model: str = Field(
+        default="google_genai:gemini-2.5-pro",
         metadata={
-            "description": "The name of the language model to use for the agent's query generation."
+            "description": "Default language model for all operations (provider:model format)."
         },
     )
 
-    reflection_model: str = Field(
-        default="gemini-2.5-pro",
+    final_report_model: str = Field(
+        default="google_genai:gemini-2.5-pro",
         metadata={
-            "description": "The name of the language model to use for the agent's reflection."
-        },
-    )
-
-    answer_model: str = Field(
-        default="gemini-2.5-pro",
-        metadata={
-            "description": "The name of the language model to use for the agent's answer."
+            "description": "Model for final report generation (provider:model format)."
         },
     )
 
@@ -51,15 +45,7 @@ class Configuration(BaseModel):
         metadata={"description": "Allow clarification questions to be asked to users when search scope is unclear."},
     )
     
-    # Research Configuration
-    research_model: str = Field(
-        default="gemini-2.5-pro",
-        metadata={"description": "The model to use for research brief generation."},
-    )
-    research_model_max_tokens: int = Field(
-        default=8000,
-        metadata={"description": "Maximum tokens for research model output."},
-    )
+    # Research workflow configuration
     max_structured_output_retries: int = Field(
         default=3,
         metadata={"description": "Maximum retries for structured output generation."},
@@ -72,6 +58,10 @@ class Configuration(BaseModel):
         default=5,
         metadata={"description": "Maximum iterations for researcher supervisor."},
     )
+    max_react_tool_calls: int = Field(
+        default=5,
+        metadata={"description": "Maximum tool calls per research session."},
+    )
     
     # MCP and Tool Configuration
     mcp_prompt: Optional[str] = Field(
@@ -82,30 +72,8 @@ class Configuration(BaseModel):
         default="mock",
         metadata={"description": "Search API to use for research (tavily, google, etc)."},
     )
-    max_react_tool_calls: int = Field(
-        default=5,
-        metadata={"description": "Maximum tool calls per research session."},
-    )
-    
-    # Compression Configuration  
-    compression_model: Optional[str] = Field(
-        default=None,
-        metadata={"description": "Model for research compression (uses research_model if None)."},
-    )
-    compression_model_max_tokens: Optional[int] = Field(
-        default=None,
-        metadata={"description": "Max tokens for compression model (uses research_model_max_tokens if None)."},
-    )
     
     # Final Report Generation Configuration
-    final_report_model: str = Field(
-        default="gemini-2.5-pro",
-        metadata={"description": "The model to use for final report generation."},
-    )
-    final_report_model_max_tokens: int = Field(
-        default=12000,
-        metadata={"description": "Maximum tokens for final report model output."},
-    )
     enable_final_report: bool = Field(
         default=True,
         metadata={"description": "Whether to generate a final comprehensive report after research."},
