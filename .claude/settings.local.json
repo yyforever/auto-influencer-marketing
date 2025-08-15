@@ -22,8 +22,18 @@
       "WebFetch(domain:changelog.langchain.com)",
       "Bash(timeout:*)",
       "Bash(mkdir:*)",
-      "Bash(uv pip install:*)"
+      "Bash(uv pip install:*)",
+      "Bash(lsof:*)",
+      "Bash(kill:*)",
+      "Bash(uv show:*)",
+      "Bash(uv pip show:*)",
+      "Bash(OPENAI_API_KEY=\"dummy\" python -c \"\nfrom langchain_openai import ChatOpenAI\nimport inspect\n\n# Get all parameters\nsig = inspect.signature(ChatOpenAI.__init__)\nprint(''ChatOpenAI.__init__ parameters containing \"\"stream\"\":'')\nfor name, param in sig.parameters.items():\n    if ''stream'' in name.lower():\n        print(f''  {name}: {param.annotation} = {param.default}'')\n\nprint(''\\nAll ChatOpenAI parameters:'')\nfor name, param in list(sig.parameters.items())[:10]:  # First 10 only\n    print(f''  {name}: {param.default}'')\n\")",
+      "Bash(chmod:*)",
+      "Bash(./test_api_endpoints.sh:*)",
+      "Bash(true)",
+      "Bash(mv:*)"
     ],
-    "deny": []
+    "deny": [],
+    "defaultMode": "acceptEdits"
   }
 }

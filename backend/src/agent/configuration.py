@@ -10,14 +10,16 @@ class Configuration(BaseModel):
 
     # Core model configuration - simplified to provider:model format
     default_model: str = Field(
-        default="google_genai:gemini-2.5-pro",
+        # default="openai:gpt-5",
+        default="google_genai:gemini-2.5-flash",
         metadata={
             "description": "Default language model for all operations (provider:model format)."
         },
     )
 
     final_report_model: str = Field(
-        default="google_genai:gemini-2.5-pro",
+        # default="openai:gpt-5",
+        default="google_genai:gemini-2.5-flash",
         metadata={
             "description": "Model for final report generation (provider:model format)."
         },

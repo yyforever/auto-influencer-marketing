@@ -64,11 +64,21 @@ async def clarify_with_user(state: InfluencerSearchState, config: RunnableConfig
     messages = state["messages"]
     
     # Simple model initialization using init_chat_model best practices
+    # Pass API key explicitly for Google GenAI to avoid default credentials lookup
+    model_kwargs = {
+        "model": configurable.default_model,
+        "temperature": 0.0,
+    }
+    
+    # Add API key for Google GenAI models
+    if "google_genai" in configurable.default_model:
+        import os
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            model_kwargs["api_key"] = api_key
+    
     clarification_model = (
-        init_chat_model(
-            model=configurable.default_model,
-            temperature=0.0
-        )
+        init_chat_model(**model_kwargs)
         .with_structured_output(ClarifyWithUser)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
     )
@@ -131,12 +141,28 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         # Step 1: Set up the research model for structured output
         configurable = Configuration.from_runnable_config(config)
         
+        # DEBUG: Print configuration details
+        logger.info(f"🔍 DEBUG - Model: {configurable.default_model}")
+        
         # Simple model initialization for structured research brief generation
+        # Pass API key explicitly for Google GenAI to avoid default credentials lookup
+        model_kwargs = {
+            "model": configurable.default_model,
+            "temperature": 0.0,
+        }
+        
+        # Add API key for Google GenAI models
+        if "google_genai" in configurable.default_model:
+            import os
+            api_key = os.getenv("GEMINI_API_KEY")
+            if api_key:
+                model_kwargs["api_key"] = api_key
+        
+        base_model = init_chat_model(**model_kwargs)
+        
+        
         research_model = (
-            init_chat_model(
-                model=configurable.default_model,
-                temperature=0.0
-            )
+            base_model
             .with_structured_output(InfluencerResearchBrief)
             .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
         )
@@ -148,7 +174,12 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         )
         
         logger.info("🤖 Generating influencer structured research brief...")
+        
+        # Now try structured output - let it fail naturally if parsing fails
         response = await research_model.ainvoke([HumanMessage(content=prompt_content)])
+        
+        logger.info("✅ Influencer research brief generated successfully")
+        logger.info(f"🔍 DEBUG - Structured response: {response}")
         
         # Step 3: Initialize supervisor with research brief and instructions
         supervisor_system_prompt = INFLUENCER_RESEARCH_SUPERVISOR_PROMPT.format(
@@ -156,9 +187,6 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
             max_concurrent_research_units=configurable.max_concurrent_research_units,
             max_researcher_iterations=configurable.max_researcher_iterations
         )
-        
-        logger.info("✅ Influencer research brief generated successfully")
-        logger.info(f"Structured influencer research brief: {response}")
         
         return Command(
             goto="research_supervisor", 
@@ -264,10 +292,20 @@ async def final_report_generation(state: InfluencerSearchState, config: Runnable
                 logger.info(f"🚀 Generating final report (attempt {current_retry + 1}/{max_retries + 1})")
                 
                 # Simple model initialization for final report generation
-                writer_model = init_chat_model(
-                    model=configurable.final_report_model,
-                    temperature=0.0
-                )
+                # Pass API key explicitly for Google GenAI to avoid default credentials lookup
+                model_kwargs = {
+                    "model": configurable.final_report_model,
+                    "temperature": 0.0,
+                }
+                
+                # Add API key for Google GenAI models
+                if "google_genai" in configurable.final_report_model:
+                    import os
+                    api_key = os.getenv("GEMINI_API_KEY")
+                    if api_key:
+                        model_kwargs["api_key"] = api_key
+                
+                writer_model = init_chat_model(**model_kwargs)
                 final_report = await writer_model.ainvoke([
                     HumanMessage(content=final_report_prompt)
                 ])

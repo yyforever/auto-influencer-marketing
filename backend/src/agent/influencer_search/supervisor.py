@@ -52,17 +52,28 @@ async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[
     lead_researcher_tools = [ConductInfluencerResearch, InfluencerResearchComplete, think_tool]
     
     # Simple model initialization with tool binding
+    # Pass API key explicitly for Google GenAI to avoid default credentials lookup
+    model_kwargs = {
+        "model": configurable.default_model,
+        "temperature": 0.0,
+    }
+    
+    # Add API key for Google GenAI models
+    if "google_genai" in configurable.default_model:
+        import os
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            model_kwargs["api_key"] = api_key
+    
     research_model = (
-        init_chat_model(
-            model=configurable.default_model,
-            temperature=0.0
-        )
+        init_chat_model(**model_kwargs)
         .bind_tools(lead_researcher_tools)
         .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
     )
     
     # Step 2: Generate supervisor response based on current context
     supervisor_messages = state.get("supervisor_messages", [])
+    logger.info(f"🔍 DEBUG - Supervisor messages: {supervisor_messages}")
     response = await research_model.ainvoke(supervisor_messages)
     
     logger.info(f"🎯 Supervisor generated response with {len(response.tool_calls) if response.tool_calls else 0} tool calls, response={response}")

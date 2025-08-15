@@ -41,6 +41,7 @@ def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0
             base_url=os.getenv("OPENAI_BASE_URL"),
             max_tokens=max_tokens,
             temperature=temperature,
+            disable_streaming=True,  # Use LangChain's proper parameter to disable streaming
         )
     elif "gemini" in model_name.lower():
         return init_chat_model(
@@ -49,6 +50,7 @@ def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0
             api_key=api_key,
             max_tokens=max_tokens,
             temperature=temperature,
+            disable_streaming=True,  # Use LangChain's proper parameter to disable streaming
         )
     else:
         # Default to OpenAI
@@ -59,6 +61,7 @@ def create_model(model_name: str, max_tokens: int = 4000, temperature: float = 0
             base_url=os.getenv("OPENAI_BASE_URL"),
             max_tokens=max_tokens,
             temperature=temperature,
+            disable_streaming=True,  # Use LangChain's proper parameter to disable streaming
         )
 
 def get_api_key_for_model(model_name: str) -> str:
