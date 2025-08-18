@@ -131,9 +131,3 @@ class InfluencerResearchComplete(BaseModel):
     pass  # No parameters needed - completion signal only
 
 
-class ResearchComplete(BaseModel):
-    """Tool to signal completion of individual research task."""
-    
-    pass  # No parameters needed - completion signal only
-
-

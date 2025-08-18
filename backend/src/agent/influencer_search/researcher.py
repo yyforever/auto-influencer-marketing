@@ -17,10 +17,11 @@ from langgraph.graph import StateGraph, START, END
 
 # Import local modules
 from .state import ResearcherState, ResearcherInputState, ResearcherOutputState
-from .schemas import ResearchComplete
+from .schemas import InfluencerResearchComplete
 from .prompts import (
     get_today_str,
     think_tool,
+    influencer_search_tool,
     is_token_limit_exceeded,
     filter_messages,
     remove_up_to_last_ai_message,
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Individual Researcher Node Functions
 # ====================================
 
-async def researcher(state, config: RunnableConfig) -> Command[Literal["researcher_tools"]]:
+async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[Literal["researcher_tools"]]:
     """Individual researcher that conducts focused research on specific topics.
     
     This researcher is given a specific research topic by the supervisor and uses
@@ -332,47 +333,6 @@ async def compress_research(state, config: RunnableConfig):
             "raw_notes": [f"Error processing research data: {str(e)}"]
         }
 
-
-# Tool Management and Search Integration
-# ======================================
-
-# Mock SearchAPI for now - replace with actual implementation
-class SearchAPI:
-    """Mock SearchAPI class for development."""
-    def __init__(self, api_type: str):
-        self.api_type = api_type
-
-    def __str__(self):
-        return f"SearchAPI({self.api_type})"
-
-
-def get_config_value(value):
-    """Get configuration value with fallback."""
-    return value if value is not None else "mock_search"
-
-
-async def get_search_tool(search_api: SearchAPI):
-    """Get search tools based on configured API."""
-    # Mock search tool implementation
-    from langchain_core.tools import tool
-    
-    @tool(description="Search for information on the internet")
-    def tavily_search(query: str) -> str:
-        """Mock search function for development."""
-        return f"Mock search results for: {query}\n\nThis is a mock implementation. Real search results would appear here with relevant information about influencer marketing based on the query."
-    
-    return [tavily_search]
-
-
-async def load_mcp_tools(config, existing_tool_names):
-    """Load MCP tools if configured."""
-    # Mock MCP tool loading - replace with actual MCP integration
-    mcp_tools = []
-    
-    # For now, return empty list since we don't have MCP configured
-    return mcp_tools
-
-
 async def get_all_tools(config: RunnableConfig):
     """Assemble complete toolkit including research, search, and MCP tools.
     
@@ -385,25 +345,10 @@ async def get_all_tools(config: RunnableConfig):
     from langchain_core.tools import tool
     
     # Start with core research tools
-    tools = [tool(ResearchComplete), think_tool]
+    tools = [tool(InfluencerResearchComplete), think_tool]
     
-    # Add configured search tools
-    configurable = Configuration.from_runnable_config(config)
-    search_api_type = get_config_value(configurable.search_api if hasattr(configurable, 'search_api') else 'mock')
-    search_api = SearchAPI(search_api_type)
-    search_tools = await get_search_tool(search_api)
-    tools.extend(search_tools)
-    
-    # Track existing tool names to prevent conflicts
-    existing_tool_names = {
-        tool.name if hasattr(tool, "name") else tool.get("name", "web_search") 
-        for tool in tools
-    }
-    
-    # Add MCP tools if configured  
-    mcp_tools = await load_mcp_tools(config, existing_tool_names)
-    tools.extend(mcp_tools)
-    
+    tools.extend([influencer_search_tool])
+   
     logger.info(f"🔧 Assembled {len(tools)} research tools: {[tool.name if hasattr(tool, 'name') else 'web_search' for tool in tools]}")
     
     return tools

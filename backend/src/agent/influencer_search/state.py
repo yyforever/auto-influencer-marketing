@@ -10,7 +10,7 @@ from typing_extensions import TypedDict, Annotated
 import operator
 
 from langgraph.graph import MessagesState
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, MessageLikeRepresentation
 
 # No legacy schema imports needed
 
@@ -47,7 +47,7 @@ class InfluencerSearchState(MessagesState):
     research_metadata: Optional[dict] = None
     """Structured metadata from research brief generation"""
     
-    supervisor_messages: Annotated[List[BaseMessage], override_reducer] = []
+    supervisor_messages: Annotated[List[MessageLikeRepresentation], override_reducer] = []
     """Messages for supervisor conversation (accumulated)"""
     
     supervisor_active: bool = False
@@ -75,7 +75,7 @@ class InfluencerSearchState(MessagesState):
 class SupervisorState(TypedDict):
     """State for the influencer marketing research supervisor."""
     
-    supervisor_messages: Annotated[List[BaseMessage], override_reducer]
+    supervisor_messages: Annotated[List[MessageLikeRepresentation], override_reducer]
     research_brief: str
     notes: Annotated[List[str], override_reducer]
     research_iterations: int
@@ -87,13 +87,14 @@ class SupervisorState(TypedDict):
 
 class ResearcherInputState(TypedDict):
     """Input state for individual researcher agents."""
-    researcher_messages: Annotated[List[BaseMessage], override_reducer]
+    researcher_messages: Annotated[List[MessageLikeRepresentation], override_reducer]
     research_topic: str
 
 
 class ResearcherState(TypedDict):
     """Complete state for individual researcher workflow."""
-    researcher_messages: Annotated[List[BaseMessage], override_reducer]
+    researcher_messages: Annotated[List[MessageLikeRepresentation], operator.add]
+    tool_call_iterations: int = 0
     research_topic: str
     tool_call_iterations: int
 

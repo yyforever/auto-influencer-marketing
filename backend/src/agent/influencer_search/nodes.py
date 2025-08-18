@@ -169,8 +169,7 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         
         # Step 2: Generate structured research brief from user messages
         prompt_content = TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT.format(
-            messages=get_buffer_string(state.get("messages", [])),
-            date=get_today_str()
+            messages=get_buffer_string(state.get("messages", []))
         )
         
         logger.info("🤖 Generating influencer structured research brief...")
@@ -183,7 +182,6 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         
         # Step 3: Initialize supervisor with research brief and instructions
         supervisor_system_prompt = INFLUENCER_RESEARCH_SUPERVISOR_PROMPT.format(
-            date=get_today_str(),
             max_concurrent_research_units=configurable.max_concurrent_research_units,
             max_researcher_iterations=configurable.max_researcher_iterations
         )
@@ -208,8 +206,7 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
                         SystemMessage(content=supervisor_system_prompt),
                         HumanMessage(content=response.research_brief)
                     ]
-                },
-                "messages": [AIMessage(content="🔍 已生成影响者营销研究摘要，正在启动研究监督程序...")]
+                }
             }
         )
         
@@ -224,13 +221,6 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
                 "messages": [AIMessage(content="⚠️ 研究摘要生成遇到问题，无法继续处理请求。请重新描述您的需求。")]
             }
         )
-
-
-
-
-
-
-
 
 async def final_report_generation(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
     """Generate the final comprehensive influencer marketing research report with retry logic for token limits.

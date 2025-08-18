@@ -60,59 +60,37 @@ def get_today_str() -> str:
 
 
 # Influencer Marketing Research Prompts
-TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT = """You will be given a set of messages that have been exchanged between yourself and the user about their influencer marketing needs. 
-Your job is to translate these messages into a detailed and structured influencer marketing research brief that will guide the research and strategy development.
+TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT = """You will be given a set of messages that have been exchanged so far between yourself and the user. 
+Your job is to translate these messages into a more detailed and concrete influencer research task brief that will be used to guide the influencer research.
 
 The messages that have been exchanged so far between yourself and the user are:
 <Messages>
 {messages}
 </Messages>
 
-Today's date is {date}.
-
-You will return a structured research brief and analysis that captures all the essential information for influencer marketing research.
-When possible, explicitly extract and populate only the following fields (do not go beyond them):
-1) brand_name, product_names, product_type, product_links, product_summary
-2) target_platforms
-3) niche_focus; geographic_focus; languages
-4) follower_range; influencer_count_target; expected_impressions
-5) campaign_objectives
-6) budget
-7) content_requirements; prohibited_claims_or_restrictions
-8) brand_tone_and_style; sample_offer
-If the user did not specify an item, set a sensible placeholder like "to be determined" or leave it null (None). Do not hallucinate facts.
+You will return a single influencer research task brief that will be used to guide the influencer research.
 
 Guidelines:
-1. **Maximize Specificity for Influencer Marketing**
-   - Include all known campaign objectives, target platforms, content preferences, and budget constraints
-   - Specify desired influencer tiers (micro, mid-tier, macro), geographic targeting, and niche focus
-   - Detail content format preferences (videos, posts, stories, etc.)
+0. Clarify Task Type
+- You need to first clarify whether this task is to supplement research with new influencers (searching for influencers different from the existing influencer list) or to completely re-search for influencers (ignoring existing influencers).
 
-2. **Fill in Unstated But Essential Dimensions**
-   - If certain key aspects (platform, niche, follower range) are essential but not provided, mark them as flexible/open-ended
-   - Don't assume specific budget ranges if not mentioned — use "to be determined" or leave null
-   - If geographic focus isn't specified, note as "flexible/global consideration" and add any region hints from context
+1. Maximize Specificity and Detail
+- Include all known user preferences and explicitly list key attributes or dimensions to consider.
+- It is important that all details from the user are included in the instructions.
 
-3. **Avoid Marketing Assumptions**
-   - If the user hasn't specified campaign goals, don't invent them
-   - If content formats aren't mentioned, mark as "open to recommendations"
-   
+2. Fill in Unstated But Necessary Dimensions as Open-Ended
+- If certain attributes are essential for a meaningful output but the user has not provided them, explicitly state that they are open-ended or default to no specific constraint.
 
-4. **Use Campaign-Focused Language**
-   - Frame the research from the perspective of campaign planning and execution
-   - Focus on actionable insights needed for influencer identification and outreach
+3. Avoid Unwarranted Assumptions
+- If the user has not provided a particular detail, do not invent one.
+- Instead, state the lack of specification and guide the researcher to treat it as flexible or accept all possible options.
 
-5. **Platform and Content Specificity**
-   - If specific platforms are mentioned, prioritize platform-native content strategies
-   - Consider platform-specific metrics and engagement patterns
-   - Account for platform demographics and content consumption behaviors
+4. Use the First Person
+- Phrase the request from the perspective of the user.
 
-6. **ROI and Performance Considerations**
-   - Include measurable objectives and KPIs where specified
-   - Consider conversion tracking and attribution requirements (e.g., UTMs, affiliate codes)
-   - Factor in content authenticity and brand alignment needs
-
-The research brief should guide comprehensive influencer discovery, vetting, and strategic campaign planning.
+5. Sources
+- You will use "Nox Influencer" platform as the sole source for influencer information.
+- If the query is in a specific language, prioritize sources published in that language.
 """
 
 INFLUENCER_RESEARCH_SUPERVISOR_PROMPT = """Influencer research is most important of all in influencer marketing. You are a influencer research supervisor. Your job is to conduct influencer research by calling the "ConductInfluencerResearch" tool.
@@ -207,6 +185,10 @@ def think_tool(reflection: str) -> str:
     """
     return f"Strategic reflection recorded: {reflection}"
 
+@tool(description="Tool for conducting influencer research")
+def influencer_search_tool(influencer_search_task: str) -> str:
+    """Tool for conducting influencer research"""
+    return f"Conducting influencer research on: {influencer_search_task}"
 
 def get_notes_from_tool_calls(supervisor_messages) -> list:
     """Extract notes from supervisor tool calls for final report."""
