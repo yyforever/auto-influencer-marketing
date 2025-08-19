@@ -349,7 +349,7 @@ async def get_all_tools(config: RunnableConfig):
     
     tools.extend([influencer_search_tool])
    
-    logger.info(f"🔧 Assembled {len(tools)} research tools: {[tool.name if hasattr(tool, 'name') else 'web_search' for tool in tools]}")
+    logger.info(f"🔧 Assembled {len(tools)} research tools: {[tool.name if hasattr(tool, 'name') else 'unkown tool' for tool in tools]}")
     
     return tools
 

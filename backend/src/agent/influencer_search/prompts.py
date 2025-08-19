@@ -185,10 +185,87 @@ def think_tool(reflection: str) -> str:
     """
     return f"Strategic reflection recorded: {reflection}"
 
-@tool(description="Tool for conducting influencer research")
-def influencer_search_tool(influencer_search_task: str) -> str:
-    """Tool for conducting influencer research"""
-    return f"Conducting influencer research on: {influencer_search_task}"
+@tool(description="Multi-platform influencer search engine supporting YouTube, Instagram, and TikTok.")
+async def influencer_search_tool(
+    keywords: list[str],
+    platform: str = "youtube",
+    min_followers: int = 50000,
+    max_followers: int = 1000000,
+    countries: str = "US,UK",
+    language: str = "en",
+    limit: int = 200
+) -> str:
+    """Search for influencers across platforms."""
+    import aiohttp
+    import os
+    
+    # Validate platform
+    if platform.lower() not in ['youtube', 'instagram', 'tiktok']:
+        return f"Unsupported platform: {platform}"
+    # API configuration
+    base_url = os.getenv('INFLUENCER_API_BASE_URL', 'http://10.101.150.253:10155')
+    uid = os.getenv('INFLUENCER_API_UID', '5773389b0e4207dfeebd6d34de70afea')
+    
+    # Format keywords with delimiter
+    formatted_keywords = ',5,'.join(keywords) + ',5'
+    
+    # Build request
+    url = f"{base_url}/ws/{platform.lower()}/star/search"
+    params = {
+        'followerGte': min_followers,
+        'followerLte': max_followers,
+        'country': countries,
+        'language': language,
+        'pageNum': 1,
+        'pageSize': min(limit, 200),  # Cap at 200 for API limits
+        'searchWords': formatted_keywords
+    }
+    headers = {'uid': uid}
+    
+    # Make request
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, params=params, headers=headers) as response:
+                if response.status != 200:
+                    return f"API error: {response.status}"
+                
+                data = await response.json()
+                
+                # Parse response
+                if data.get('errorNum') != 0 or 'retDataList' not in data:
+                    return "No results found"
+                
+                influencers = data['retDataList']
+                if not influencers:
+                    return f"No {platform} influencers found for '{', '.join(keywords)}'"
+                
+                # Format results
+                results = [f"Found {len(influencers)} {platform} influencers for '{', '.join(keywords)}':\n"]
+                
+                for i, inf in enumerate(influencers, 1):
+                    name = inf.get('nickName') or 'Unknown'
+                    country = inf.get('country') or 'Unknown'
+                    followers = inf.get('followers') or 0
+                    average_views = inf.get('estimateVideoViews') or 0
+                    score = inf.get('noxScore') or 0
+                    
+                    # Special handling for engagement to avoid None * 100 error
+                    interactive_rate = inf.get('interactiveRate')
+                    engagement = (0 if interactive_rate is None else interactive_rate) * 100
+                    
+                    results.append(f"{i}. {name}")
+                    results.append(f"   Platform: {platform}")
+                    results.append(f"   Followers: {followers:,}")
+                    results.append(f"   Location: {country}")
+                    results.append(f"   Engagement: {engagement:.2f}%")
+                    results.append(f"   Average Views: {average_views:,}")
+                    results.append(f"   Nox Score: {score:.2f}\n")
+                
+                search_summary = f"Found {len(influencers)} {platform} influencers for '{', '.join(keywords)}', with {min_followers} to {max_followers} followers, in {countries} countries, in {language} language:\n"
+                return search_summary + "\n".join(results)
+                
+    except Exception as e:
+        return f"Search failed: {str(e)}"
 
 def get_notes_from_tool_calls(supervisor_messages) -> list:
     """Extract notes from supervisor tool calls for final report."""

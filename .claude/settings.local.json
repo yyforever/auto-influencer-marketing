@@ -31,7 +31,8 @@
       "Bash(chmod:*)",
       "Bash(./test_api_endpoints.sh:*)",
       "Bash(true)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(./run_tests.sh:*)"
     ],
     "deny": [],
     "defaultMode": "acceptEdits"
