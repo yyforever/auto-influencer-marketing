@@ -122,14 +122,13 @@ async def researcher(state: ResearcherState, config: RunnableConfig) -> Command[
         )
 
 
-async def researcher_tools(state, config: RunnableConfig) -> Command[Literal["researcher", "compress_research"]]:
+async def researcher_tools(state: ResearcherState, config: RunnableConfig) -> Command[Literal["researcher", "compress_research"]]:
     """Execute tools called by the researcher, including search tools and strategic thinking.
     
     This function handles various types of researcher tool calls:
     1. think_tool - Strategic reflection that continues the research conversation
-    2. Search tools (tavily_search, web_search) - Information gathering
-    3. MCP tools - External tool integrations
-    4. ResearchComplete - Signals completion of individual research task
+    2. influencer_search_tool - Influencer search
+    3. ResearchComplete - Signals completion of individual research task
     
     Args:
         state: Current researcher state with messages and iteration count
@@ -150,14 +149,10 @@ async def researcher_tools(state, config: RunnableConfig) -> Command[Literal["re
             logger.warning("No recent message found, proceeding to compression")
             return Command(goto="compress_research")
         
-        # Early exit if no tool calls were made (including native web search)
+        # Early exit if no tool calls were made
         has_tool_calls = bool(most_recent_message.tool_calls)
-        has_native_search = (
-            openai_websearch_called(most_recent_message) or 
-            anthropic_websearch_called(most_recent_message)
-        )
         
-        if not has_tool_calls and not has_native_search:
+        if not has_tool_calls:
             logger.info("No tool calls found, proceeding to compression")
             return Command(goto="compress_research")
         
@@ -166,10 +161,10 @@ async def researcher_tools(state, config: RunnableConfig) -> Command[Literal["re
         
         if has_tool_calls:
             # Get all available research tools
-            tools = await get_all_tools(config)
+            available_tools = await get_all_tools(config)
             tools_by_name = {
                 tool.name if hasattr(tool, "name") else tool.get("name", "web_search"): tool 
-                for tool in tools
+                for tool in available_tools
             }
             
             # Execute all tool calls in parallel
@@ -229,7 +224,7 @@ async def researcher_tools(state, config: RunnableConfig) -> Command[Literal["re
         )
 
 
-async def compress_research(state, config: RunnableConfig):
+async def compress_research(state: ResearcherState, config: RunnableConfig):
     """Compress and synthesize research findings into a concise, structured summary.
     
     This function takes all the research findings, tool outputs, and AI messages from
@@ -244,6 +239,40 @@ async def compress_research(state, config: RunnableConfig):
         Dictionary containing compressed research summary and raw notes
     """
     logger.info("🗜️ Starting research compression")
+    
+    # 直接跳过压缩逻辑 - 极简实现，不调用大模型
+    try:
+        researcher_messages = state.get("researcher_messages", [])
+        
+        # 使用相同的逻辑提取原始内容
+        raw_notes_content = "\n".join([
+            str(message.content) 
+            for message in filter_messages(researcher_messages, include_types=["tool", "ai"])
+        ])
+        
+        # 直接拼装简单的研究摘要，不调用大模型
+        tool_call_count = len([m for m in researcher_messages if hasattr(m, 'tool_calls') and m.tool_calls])
+        compressed_summary = f"Research completed with {tool_call_count} tool executions."
+        
+        if raw_notes_content.strip():
+            # 取前500字符作为简要摘要
+            preview = raw_notes_content.strip()[:500]
+            if len(raw_notes_content) > 500:
+                preview += "..."
+            compressed_summary += f"\n\nFindings:\n{preview}"
+        
+        logger.info("✅ Research compression bypassed - returning direct results")
+        
+        # 返回与其他节点匹配的格式
+        return {
+            "compressed_research": compressed_summary,
+            "raw_notes": [raw_notes_content]
+        }
+        
+    except Exception:
+        # 如果极简实现失败，继续执行原压缩逻辑
+        logger.error("Research compression bypassed failed")
+        pass
     
     try:
         # Step 1: Simple compression model configuration

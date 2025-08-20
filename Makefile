@@ -15,7 +15,7 @@ dev-frontend:
 
 dev-backend:
 	@echo "Starting backend development server..."
-	@cd backend && langgraph dev 2>&1 | tee ../logs/backend.log
+	@cd backend && source .venv/bin/activate && langgraph dev 2>&1 | tee ../logs/backend.log
 
 # Run frontend and backend concurrently
 dev:
@@ -32,7 +32,7 @@ dev-frontend-silent:
 dev-backend-silent:
 	@echo "Starting backend development server (logging to logs/backend.log)..."
 	@mkdir -p logs
-	@cd backend && langgraph dev > ../logs/backend.log 2>&1
+	@cd backend && source .venv/bin/activate && langgraph dev > ../logs/backend.log 2>&1
 
 dev-silent:
 	@echo "Starting both servers silently (logs in logs/ directory)..."

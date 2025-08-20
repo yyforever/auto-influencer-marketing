@@ -195,7 +195,21 @@ async def influencer_search_tool(
     language: str = "en",
     limit: int = 200
 ) -> str:
-    """Search for influencers across platforms."""
+    """Search for influencers across social media platforms using keyword-based filtering.
+
+    Args:
+        keywords: List of search keywords to find relevant influencers
+        platform: Target platform for search (youtube, instagram, or tiktok)
+        min_followers: Minimum follower count threshold for filtering results
+        max_followers: Maximum follower count threshold for filtering results
+        countries: Comma-separated country codes for geographic filtering (e.g., "US,UK,CA")
+        language: Language code for content language filtering (e.g., "en", "es")
+        limit: Maximum number of results to return (capped at 200 for API limits)
+
+    Returns:
+        Formatted string containing influencer profiles with metrics including name, 
+        follower count, location, engagement rate, average views, and Nox score.
+    """
     import aiohttp
     import os
     

@@ -11,7 +11,8 @@ from langgraph.graph import StateGraph, START, END
 
 # Import local modules
 from agent.influencer_search.state import InfluencerSearchState, InfluencerSearchInputState
-from agent.influencer_search.nodes import clarify_with_user, write_research_brief, final_report_generation, supervisor_subgraph
+from agent.influencer_search.nodes import clarify_with_user, write_research_brief, final_report_generation
+from agent.influencer_search.supervisor import supervisor_subgraph
 from agent.configuration import Configuration
 
 # Setup logging

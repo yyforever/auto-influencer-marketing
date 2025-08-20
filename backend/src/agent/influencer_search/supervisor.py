@@ -73,7 +73,7 @@ async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[
     
     # Step 2: Generate supervisor response based on current context
     supervisor_messages = state.get("supervisor_messages", [])
-    logger.info(f"🔍 DEBUG - Supervisor messages: {supervisor_messages}")
+    logger.info(f"🔍 DEBUG - {len(supervisor_messages)} Supervisor messages: {supervisor_messages}")
     response = await research_model.ainvoke(supervisor_messages)
     
     logger.info(f"🎯 Supervisor generated response with {len(response.tool_calls) if response.tool_calls else 0} tool calls, response={response}")
@@ -133,6 +133,7 @@ def _process_think_tools(tool_calls: list) -> list[ToolMessage]:
     Returns:
         List of ToolMessage objects for think_tool calls
     """
+    logger.info(f"🔍 Processing {len(tool_calls)} think_tool calls")
     think_messages = []
     think_tool_calls = [tc for tc in tool_calls if tc.get("name") == "think_tool"]
     
@@ -157,12 +158,13 @@ async def _process_research_tasks(tool_calls: list, config: RunnableConfig) -> t
     Returns:
         Tuple of (tool_messages, update_payload)
     """
+    logger.info(f"🔍 Processing Research Tasks with {len(tool_calls)} tool calls")
     research_calls = [tc for tc in tool_calls if tc.get("name") == "ConductInfluencerResearch"]
     if not research_calls:
         return [], {}
     
     configurable = Configuration.from_runnable_config(config)
-    logger.info(f"🔍 Processing {len(research_calls)} research delegation requests")
+    logger.info(f"🔍 Processing Research Tasks: {len(research_calls)} research delegation requests")
     
     # Apply concurrency limits
     allowed_calls = research_calls[:configurable.max_concurrent_research_units]
@@ -170,12 +172,12 @@ async def _process_research_tasks(tool_calls: list, config: RunnableConfig) -> t
     
     try:
         # Execute research tasks concurrently
-        from .nodes import researcher_subgraph
+        from .researcher import researcher_subgraph
         
         research_tasks = [
             researcher_subgraph.ainvoke({
-                "researcher_messages": [HumanMessage(content=tc["args"]["research_topic"])],
-                "research_topic": tc["args"]["research_topic"],
+                "researcher_messages": [HumanMessage(content=tc["args"]["research_task_brief"])],
+                "research_task_brief": tc["args"]["research_task_brief"],
                 "tool_call_iterations": 0
             }, config) 
             for tc in allowed_calls
@@ -266,6 +268,7 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
     # Check if research should end
     should_end, end_update = _should_end_research(state, config)
     if should_end:
+        logger.info("🏁 Ending research phase")
         return Command(goto=END, update=end_update)
     
     # Get tool calls from most recent message
@@ -274,6 +277,7 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
     tool_calls = most_recent_message.tool_calls
     
     try:
+        logger.info(f"🔍 Processing supervisor tools with {len(tool_calls)} tool calls")
         # Process different tool types
         think_messages = _process_think_tools(tool_calls)
         research_messages, research_update = await _process_research_tasks(tool_calls, config)
@@ -283,7 +287,7 @@ async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Co
         update_payload = {"supervisor_messages": all_tool_messages}
         update_payload.update(research_update)
         
-        logger.info(f"✅ Processed {len(all_tool_messages)} tool messages, continuing supervision")
+        logger.info(f"✅ Processed supervisor tools, added {len(all_tool_messages)} tool messages, continuing supervision")
         return Command(goto="supervisor", update=update_payload)
         
     except Exception as e:

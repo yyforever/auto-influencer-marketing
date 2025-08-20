@@ -88,14 +88,13 @@ class SupervisorState(TypedDict):
 class ResearcherInputState(TypedDict):
     """Input state for individual researcher agents."""
     researcher_messages: Annotated[List[MessageLikeRepresentation], override_reducer]
-    research_topic: str
-
+    research_task_brief: str
 
 class ResearcherState(TypedDict):
     """Complete state for individual researcher workflow."""
     researcher_messages: Annotated[List[MessageLikeRepresentation], operator.add]
     tool_call_iterations: int = 0
-    research_topic: str
+    research_task_brief: str
     tool_call_iterations: int
 
 
@@ -103,8 +102,3 @@ class ResearcherOutputState(TypedDict):
     """Output state from researcher with compressed results."""
     compressed_research: str
     raw_notes: Annotated[List[str], override_reducer]
-
-
-# Type aliases for cleaner imports
-SearchInputState = InfluencerSearchInputState
-SearchState = InfluencerSearchState

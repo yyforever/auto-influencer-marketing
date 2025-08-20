@@ -113,7 +113,7 @@ class InfluencerResearchBrief(BaseModel):
 class ConductInfluencerResearch(BaseModel):
     """Tool for delegating influencer marketing research to specialized researchers."""
     
-    research_topic: str = Field(
+    research_task_brief: str = Field(
         description="""The specific influencer marketing research topic to investigate. 
         Should be a single focused topic described in high detail (at least a paragraph).
         

@@ -15,9 +15,9 @@ from langgraph.types import Command
 from langgraph.graph import END
 
 # Import local modules
-from .state import InfluencerSearchState
-from .schemas import ClarifyWithUser, InfluencerResearchBrief
-from .prompts import (
+from agent.influencer_search.state import InfluencerSearchState
+from agent.influencer_search.schemas import ClarifyWithUser, InfluencerResearchBrief
+from agent.influencer_search.prompts import (
     CLARIFY_WITH_USER_INSTRUCTIONS,
     TRANSFORM_MESSAGES_INTO_INFLUENCER_RESEARCH_BRIEF_PROMPT,
     INFLUENCER_RESEARCH_SUPERVISOR_PROMPT,
@@ -26,7 +26,7 @@ from .prompts import (
     is_token_limit_exceeded,
     get_model_token_limit
 )
-from ..configuration import Configuration
+from agent.configuration import Configuration
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -221,143 +221,99 @@ async def write_research_brief(state: InfluencerSearchState, config: RunnableCon
         )
 
 async def final_report_generation(state: InfluencerSearchState, config: RunnableConfig) -> Dict[str, Any]:
-    """Generate the final comprehensive influencer marketing research report with retry logic for token limits.
+    """Generate the final comprehensive influencer marketing research report with retry logic.
     
-    This function takes all collected research findings and synthesizes them into a 
-    well-structured, comprehensive final report using the configured report generation model.
+    Robust report generation from research findings with detailed error logging and retry mechanism.
     
     Args:
-        state: Agent state containing research findings and context
-        config: Runtime configuration with model settings and API keys
+        state: Agent state containing research findings
+        config: Runtime configuration with model settings
         
     Returns:
         Dictionary containing the final report and updated state
     """
+    import asyncio
+    
     logger.info("📝 Starting final report generation")
     
-    try:
-        # Step 1: Extract research findings and configuration
-        configurable = Configuration.from_runnable_config(config)
-        
-        # Check if final report generation is enabled
-        if not configurable.enable_final_report:
-            logger.info("Final report generation is disabled, skipping")
+    # Extract research findings
+    notes = state.get("notes", [])
+    findings = "\n".join(notes)
+    
+    if not findings.strip():
+        logger.warning("No research findings available")
+        return {
+            "final_report": "⚠️ 无法生成报告：未找到研究数据",
+            "messages": [AIMessage(content="⚠️ 无法生成最终报告：缺少研究数据")],
+            "report_completed": False,
+            "notes": {"type": "override", "value": []}
+        }
+    
+    # Configure model
+    configurable = Configuration.from_runnable_config(config)
+    logger.info(f"🤖 Using model {configurable.final_report_model} for report generation")
+    
+    # Prepare comprehensive prompt
+    final_report_prompt = FINAL_REPORT_GENERATION_PROMPT.format(
+        research_brief=state.get("research_brief", ""),
+        messages=get_buffer_string(state.get("messages", [])),
+        findings=findings,
+        date=get_today_str()
+    )
+    
+    # Initialize model with API key
+    model_kwargs = {
+        "model": configurable.final_report_model,
+        "temperature": 0.0,
+    }
+    
+    if "google_genai" in configurable.final_report_model:
+        import os
+        api_key = os.getenv("GEMINI_API_KEY")
+        if api_key:
+            model_kwargs["api_key"] = api_key
+    
+    writer_model = init_chat_model(**model_kwargs)
+    
+    # Retry logic with detailed error logging
+    max_retries = 3
+    
+    for attempt in range(max_retries + 1):
+        try:
+            logger.info(f"🚀 Generating final report (attempt {attempt + 1}/{max_retries + 1})")
+            
+            final_report = await writer_model.ainvoke([
+                HumanMessage(content=final_report_prompt)
+            ])
+            
+            logger.info("✅ Final report generated successfully")
+            
             return {
-                "messages": [AIMessage(content="🎯 影响者营销研究已完成，未生成最终报告（已禁用）")],
-                "report_completed": False
+                "final_report": final_report.content, 
+                "messages": [final_report],
+                "report_completed": True,
+                "notes": {"type": "override", "value": []}  # Clear notes after successful generation
             }
-        
-        # Get research findings from notes
-        notes = state.get("notes", [])
-        findings = "\n".join(notes)
-        
-        if not findings.strip():
-            logger.warning("No research findings available for report generation")
-            return {
-                "final_report": "⚠️ 无法生成报告：未找到研究发现和数据",
-                "messages": [AIMessage(content="⚠️ 无法生成最终报告：缺少研究数据")],
-                "report_completed": False
-            }
-        
-        # Step 2: Configure the final report generation model  
-        logger.info(f"🤖 Using model {configurable.final_report_model} for report generation")
-        
-        # Step 3: Attempt report generation with token limit retry logic
-        max_retries = 3
-        current_retry = 0
-        findings_token_limit = None
-        
-        while current_retry <= max_retries:
-            try:
-                # Create comprehensive prompt with all research context
-                final_report_prompt = FINAL_REPORT_GENERATION_PROMPT.format(
-                    research_brief=state.get("research_brief", ""),
-                    messages=get_buffer_string(state.get("messages", [])),
-                    findings=findings,
-                    date=get_today_str()
-                )
-                
-                logger.info(f"🚀 Generating final report (attempt {current_retry + 1}/{max_retries + 1})")
-                
-                # Simple model initialization for final report generation
-                # Pass API key explicitly for Google GenAI to avoid default credentials lookup
-                model_kwargs = {
-                    "model": configurable.final_report_model,
-                    "temperature": 0.0,
-                }
-                
-                # Add API key for Google GenAI models
-                if "google_genai" in configurable.final_report_model:
-                    import os
-                    api_key = os.getenv("GEMINI_API_KEY")
-                    if api_key:
-                        model_kwargs["api_key"] = api_key
-                
-                writer_model = init_chat_model(**model_kwargs)
-                final_report = await writer_model.ainvoke([
-                    HumanMessage(content=final_report_prompt)
-                ])
-                
-                logger.info("✅ Final report generated successfully")
-                
-                # Return successful report generation
+            
+        except Exception as e:
+            # Detailed error logging
+            logger.error(f"报告生成失败 - 尝试次数: {attempt + 1}/{max_retries + 1}")
+            logger.error(f"错误类型: {type(e).__name__}")
+            logger.error(f"错误详情: {str(e)}")
+            logger.error(f"研究数据长度: {len(findings)} 字符")
+            logger.error(f"使用模型: {configurable.final_report_model}")
+            
+            if attempt < max_retries:
+                logger.warning(f"第{attempt + 1}次尝试失败，1秒后重试...")
+                await asyncio.sleep(1)  # 1秒延迟避免API限流
+                continue
+            else:
+                logger.error(f"报告生成在{max_retries + 1}次尝试后最终失败")
                 return {
-                    "final_report": final_report.content, 
-                    "messages": [final_report],
-                    "report_completed": True,
-                    "notes": []  # Clear notes after report generation
+                    "final_report": f"❌ 报告生成失败：{str(e)}",
+                    "messages": [AIMessage(content="⚠️ 报告生成在多次重试后失败，请检查配置和网络连接")],
+                    "report_completed": False,
+                    "notes": {"type": "override", "value": []}
                 }
-                
-            except Exception as e:
-                # Handle token limit exceeded errors with progressive truncation
-                if is_token_limit_exceeded(e, configurable.final_report_model):
-                    current_retry += 1
-                    logger.warning(f"Token limit exceeded, attempting retry {current_retry}/{max_retries}")
-                    
-                    if current_retry == 1:
-                        # First retry: determine initial truncation limit
-                        model_token_limit = get_model_token_limit(configurable.final_report_model)
-                        if not model_token_limit:
-                            logger.error("Could not determine model token limit")
-                            return {
-                                "final_report": f"❌ 报告生成错误：Token限制超出，但无法确定模型的最大上下文长度。请检查模型配置。错误：{e}",
-                                "messages": [AIMessage(content="⚠️ 报告生成因token限制失败")],
-                                "report_completed": False
-                            }
-                        # Use 4x token limit as character approximation for truncation
-                        findings_token_limit = model_token_limit * 4
-                    else:
-                        # Subsequent retries: reduce by 10% each time
-                        findings_token_limit = int(findings_token_limit * 0.9)
-                    
-                    # Truncate findings and retry
-                    findings = findings[:findings_token_limit]
-                    logger.info(f"Truncated findings to {len(findings)} characters")
-                    continue
-                else:
-                    # Non-token-limit error: return error immediately
-                    logger.error(f"Report generation error: {e}")
-                    return {
-                        "final_report": f"❌ 报告生成错误：{str(e)}",
-                        "messages": [AIMessage(content="⚠️ 报告生成过程中发生错误")],
-                        "report_completed": False
-                    }
-        
-        # Step 4: Return failure result if all retries exhausted
-        logger.error("Report generation failed after maximum retries")
-        return {
-            "final_report": "❌ 报告生成错误：已达到最大重试次数",
-            "messages": [AIMessage(content="⚠️ 报告生成多次重试后失败")],
-            "report_completed": False
-        }
-        
-    except Exception as e:
-        logger.error(f"Critical error in final_report_generation: {e}")
-        # Fallback result
-        return {
-            "final_report": f"❌ 报告生成关键错误：{str(e)}",
-            "messages": [AIMessage(content="⚠️ 报告生成系统遇到严重错误")],
-            "report_completed": False
-        }
 
 
